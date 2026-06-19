@@ -15,7 +15,9 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedChannel, setSelectedChannel] = useState(null);
   
-  const XTREAM_URL = '/live/get.php?username=Ugeen_VIP8Spjx2&password=p0Sy3J&type=m3u_plus&output=m3u8';
+  const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
+  const BASE_URL = isNativeApp ? 'http://ugeen.live:8080' : '/live';
+  const XTREAM_URL = `${BASE_URL}/get.php?username=Ugeen_VIP8Spjx2&password=p0Sy3J&type=m3u_plus&output=m3u8`;
 
   useEffect(() => {
     fetchPlaylist();
@@ -64,10 +66,12 @@ export default function App() {
         if (Object.keys(currentChannelInfo).length > 0) {
           if (!currentChannelInfo.isMarker) {
             let safeUrl = line;
-            if (safeUrl.startsWith('http://ugeen.live:8080')) {
-              safeUrl = safeUrl.replace('http://ugeen.live:8080', '/live');
-            } else if (safeUrl.startsWith('http://ugeen.live')) {
-              safeUrl = safeUrl.replace('http://ugeen.live', '/live');
+            if (!isNativeApp) {
+              if (safeUrl.startsWith('http://ugeen.live:8080')) {
+                safeUrl = safeUrl.replace('http://ugeen.live:8080', '/live');
+              } else if (safeUrl.startsWith('http://ugeen.live')) {
+                safeUrl = safeUrl.replace('http://ugeen.live', '/live');
+              }
             }
             currentChannelInfo.url = safeUrl;
             parsedChannels.push(currentChannelInfo);

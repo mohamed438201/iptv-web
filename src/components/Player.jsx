@@ -85,7 +85,8 @@ export default function Player({ channel, onBack }) {
           levelLoadingTimeOut: 20000,
           xhrSetup: function(xhr, url) {
             let requestUrl = url;
-            if (requestUrl.includes('ugeen.live')) {
+            const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
+            if (!isNativeApp && requestUrl.includes('ugeen.live')) {
               requestUrl = requestUrl.replace(/^https?:\/\/ugeen\.live(:\d+)?/, '/live');
             }
             xhr.open('GET', requestUrl, true);
