@@ -1,0 +1,8 @@
+{
+  "appId": "com.ugeen.iptv",
+  "appName": "IPTV Premium",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true
+  }
+}
