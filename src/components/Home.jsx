@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useEffect } from 'react';
-import { Play, Info } from 'lucide-react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { Play, Info, Search } from 'lucide-react';
 
 // DragScroll component handles mouse drag to scroll on desktop and touch on mobile
 function DragScroll({ className, children, ...props }) {
@@ -92,14 +92,26 @@ export default function Home({
   onSelectGroup, 
   onChannelSelect
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
   const heroChannels = useMemo(() => {
     if (!channels || channels.length === 0) return [];
+    if (searchQuery.trim() !== '') return []; // Hide hero when searching
     const withLogos = channels.filter(c => c.logo);
     if (withLogos.length >= 5) return withLogos.slice(0, 5);
     return channels.slice(0, 5);
-  }, [channels]);
+  }, [channels, searchQuery]);
 
   const rowsData = useMemo(() => {
+    if (searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase();
+      const filtered = channels.filter(c => c.name && c.name.toLowerCase().includes(query));
+      return [{
+        title: 'نتائج البحث',
+        channels: filtered
+      }];
+    }
+
     if (currentGroup === 'All') {
       return Object.keys(groups).map(groupName => ({
         title: groupName,
@@ -109,15 +121,16 @@ export default function Home({
       if (!channels || channels.length === 0) return [];
       const chunkSize = 15;
       const result = [];
-      for (let i = 0; i < channels.length; i += chunkSize) {
+      const groupChannels = groups[currentGroup] || channels;
+      for (let i = 0; i < groupChannels.length; i += chunkSize) {
         result.push({
           title: `${currentGroup} - جزء ${Math.floor(i / chunkSize) + 1}`,
-          channels: channels.slice(i, i + chunkSize)
+          channels: groupChannels.slice(i, i + chunkSize)
         });
       }
       return result;
     }
-  }, [currentGroup, groups, channels]);
+  }, [currentGroup, groups, channels, searchQuery]);
 
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
@@ -130,11 +143,21 @@ export default function Home({
       
       {/* Absolute Premium Top Bar */}
       <div className="premium-top-bar">
-        <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => onSelectGroup('All')}>
+        <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectGroup('All'); setSearchQuery(''); }}>
           MY<span style={{ color: '#E50914' }}>IPTV</span>
         </h1>
-        <div className="premium-top-actions" style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
-          <span style={{ color: 'white', fontWeight: 'bold', cursor: 'pointer' }} onClick={() => onSelectGroup('All')}>الرئيسية</span>
+        <div className="premium-top-actions" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div className="premium-search-wrapper">
+            <Search className="premium-search-icon" size={16} />
+            <input 
+              type="text" 
+              className="premium-search-input" 
+              placeholder="ابحث عن قناة..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <span style={{ color: 'white', fontWeight: 'bold', cursor: 'pointer', display: 'none' }} onClick={() => { onSelectGroup('All'); setSearchQuery(''); }}>الرئيسية</span>
         </div>
       </div>
 
