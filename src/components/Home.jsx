@@ -122,7 +122,7 @@ export default function Home({
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
     e.target.dataset.error = true;
-    e.target.src = 'https://via.placeholder.com/256?text=TV&bg=111111';
+    e.target.src = 'https://placehold.co/256x256/111111/FFFFFF?text=TV';
   };
 
   return (
@@ -142,7 +142,7 @@ export default function Home({
       {heroChannels.length > 0 && (
         <div className="premium-hero-slider">
           {heroChannels.map((featuredChannel, idx) => {
-            const imageSrc = featuredChannel.logo || `https://via.placeholder.com/256?text=TV`;
+            const imageSrc = featuredChannel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
             return (
               <div 
                 key={idx} 
@@ -220,7 +220,7 @@ export default function Home({
             <h3 className="premium-row-title">{row.title}</h3>
             <DragScroll className="premium-row-scroll">
               {row.channels.map((channel, idx) => {
-                const imageSrc = channel.logo || `https://via.placeholder.com/256?text=TV`;
+                const imageSrc = channel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
                 return (
                   <div className="premium-card" key={idx} onClick={() => onChannelSelect(channel)}>
                     <div className="premium-card-image-wrapper">

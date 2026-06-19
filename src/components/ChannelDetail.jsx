@@ -8,12 +8,12 @@ export default function ChannelDetail({ channel, groupChannels, onBack, onPlay, 
     .filter(c => c && c.name && c.name !== channel.name)
     .slice(0, 15);
 
-  const channelImageSrc = channel.logo || `https://via.placeholder.com/256?text=TV`;
+  const channelImageSrc = channel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
 
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
     e.target.dataset.error = true;
-    e.target.src = 'https://via.placeholder.com/256?text=TV';
+    e.target.src = 'https://placehold.co/256x256/111111/FFFFFF?text=TV';
   };
 
   return (
@@ -81,7 +81,7 @@ export default function ChannelDetail({ channel, groupChannels, onBack, onPlay, 
 
           <div className="related-channels-list">
             {relatedChannels.map((relChannel, idx) => {
-              const relImageSrc = relChannel.logo || `https://via.placeholder.com/256?text=TV`;
+              const relImageSrc = relChannel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
               return (
                 <div 
                   key={idx} 
