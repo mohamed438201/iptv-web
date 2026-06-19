@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/live/:match*",
+      "destination": "http://ugeen.live:8080/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
