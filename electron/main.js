@@ -1,4 +1,5 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -32,6 +33,25 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on('update-available', () => {
+    // Notify user optionally if needed, but checkForUpdatesAndNotify already does it
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'تحديث جديد جاهز!',
+      message: 'تم تحميل تحديث جديد، هل ترغب في إعادة تشغيل البرنامج الآن لتثبيته؟',
+      buttons: ['إعادة التشغيل', 'لاحقاً']
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
