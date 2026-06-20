@@ -25,7 +25,7 @@ export default function Player({ channel, onBack }) {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
       if (isPlaying) setShowControls(false);
-    }, 3000);
+    }, 3500);
   };
 
   useEffect(() => {
@@ -43,9 +43,10 @@ export default function Player({ channel, onBack }) {
       hlsRef.current = null;
     }
 
-    const isMp4OrMkv = finalUrl.includes('.mp4') || finalUrl.includes('.mkv') || finalUrl.includes('.avi');
+    const isLive = channel.type === 'live';
+    const isNativeApp = window.Capacitor !== undefined; // Capacitor Android
     
-    // Minimal fallback: if it strictly ends with .ts, change to .m3u8
+    // Fallback TS to M3U8 for better HLS support
     if (finalUrl.endsWith('.ts')) {
       finalUrl = finalUrl.replace(/\.ts$/, '.m3u8');
     }
@@ -63,17 +64,21 @@ export default function Player({ channel, onBack }) {
       }
     };
 
-    if (isMp4OrMkv) {
+    if (!isLive) {
+      // VOD (MP4, MKV)
       video.src = finalUrl;
       video.onloadedmetadata = attemptPlay;
       video.onerror = () => {
         setIsLoading(false);
-        setErrorMsg("تعذر التشغيل");
+        setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
       };
     } else {
-      if (Hls.isSupported()) {
+      // LIVE (M3U8)
+      if (Hls.isSupported() && !isNativeApp) {
         const hls = new Hls({
-          xhrSetup: (xhr, url) => {}
+          maxBufferLength: 30,
+          maxMaxBufferLength: 600,
+          enableWorker: true
         });
         hlsRef.current = hls;
 
@@ -82,18 +87,17 @@ export default function Player({ channel, onBack }) {
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
-          video.play().catch(e => console.log('Auto-play prevented:', e));
+          attemptPlay();
         });
 
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                setErrorMsg('خطأ في الاتصال بالشبكة أو البث غير متاح.');
+                setErrorMsg('خطأ في الاتصال بالشبكة...');
                 hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                setErrorMsg('خطأ في تشغيل الوسائط، جاري المحاولة...');
                 hls.recoverMediaError();
                 break;
               default:
@@ -103,13 +107,19 @@ export default function Player({ channel, onBack }) {
             }
           }
         });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      } else if (video.canPlayType('application/vnd.apple.mpegurl') || isNativeApp) {
+        // Native HLS fallback (Safari, iOS, Capacitor Android)
         video.src = finalUrl;
         video.addEventListener('loadedmetadata', () => {
           setIsLoading(false);
-          video.play().catch(e => console.log('Auto-play prevented:', e));
+          attemptPlay();
         });
+        video.onerror = () => {
+          setIsLoading(false);
+          setErrorMsg("فشل التشغيل المباشر");
+        };
       }
+    }
     
     return () => {
       video.pause();
@@ -183,51 +193,48 @@ export default function Player({ channel, onBack }) {
         onPause={() => setIsPlaying(false)}
       ></video>
 
-      {/* Loading State */}
       {isLoading && (
         <div className="error-message" style={{background: 'rgba(0,0,0,0.5)'}}>
           <Loader2 className="spinner" size={48} color="white" />
         </div>
       )}
 
-      {/* Error State */}
       {errorMsg && (
         <div className="error-message">
           <AlertCircle size={48} color="#E50914" />
           <h3>عذراً، تعذر التشغيل</h3>
-          <p>يبدو أن هناك مشكلة في هذا البث. يرجى المحاولة لاحقاً.</p>
-          <button className="play-main-btn" onClick={onBack} style={{marginTop: '24px', maxWidth: '200px'}}>
+          <p>{errorMsg}</p>
+          <button className="play-main-btn" onClick={onBack} style={{marginTop: '24px', maxWidth: '200px', fontSize: '16px', padding: '12px'}}>
             العودة
           </button>
         </div>
       )}
 
-      {/* Overlay Controls */}
       <div className={`player-overlay ${!showControls && isPlaying && !isLoading && !errorMsg ? 'hidden' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="player-header">
-          <button className="back-btn glass-effect" onClick={onBack} title="العودة">
+          <button className="back-btn glass-effect" onClick={onBack} title="العودة" style={{ position: 'relative', top: 0 }}>
             <ChevronRight size={24} />
           </button>
           <div className="channel-title-center glass-effect">
-            <h2>{channel.name}</h2>
+            <h2 style={{ fontSize: '16px', fontWeight: 'bold' }}>{channel.name}</h2>
           </div>
         </div>
 
-        <div className="main-controls" onClick={togglePlay}>
+        <div className="main-controls" onClick={togglePlay} style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
            {!isPlaying && !isLoading && !errorMsg && (
-             <div className="center-play-btn glass-effect">
-               <Play size={48} fill="white" />
+             <div className="center-play-btn glass-effect" style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <Play size={40} fill="white" />
              </div>
            )}
         </div>
 
-        <div className="bottom-bar glass-effect">
-          <div className="left-controls">
-            <button className="control-btn play-pause-small" onClick={togglePlay}>
+        <div className="bottom-bar glass-effect" style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(0,0,0,0.7)' }}>
+          <div className="left-controls" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button className="control-btn" onClick={togglePlay} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
               {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="white" />}
             </button>
-            <div className="volume-container">
-              <button className="control-btn" onClick={() => setIsMuted(!isMuted)}>
+            <div className="volume-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button className="control-btn" onClick={() => setIsMuted(!isMuted)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
                 {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
               </button>
               <input 
@@ -241,17 +248,19 @@ export default function Player({ channel, onBack }) {
                 className="volume-slider" 
               />
             </div>
-            <div className="live-indicator">
-              <div className="live-dot"></div>
-              مباشر
-            </div>
+            {channel.type === 'live' && (
+              <div className="live-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'red', fontSize: '14px', fontWeight: 'bold' }}>
+                <div className="live-dot" style={{ width: '8px', height: '8px', background: 'red', borderRadius: '50%' }}></div>
+                مباشر
+              </div>
+            )}
           </div>
           
-          <div className="right-controls">
-            <button className="control-btn" onClick={handleRefresh} title="تحديث البث">
+          <div className="right-controls" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button className="control-btn" onClick={handleRefresh} title="تحديث البث" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
               <RefreshCw size={20} />
             </button>
-            <button className="control-btn" onClick={toggleFullscreen}>
+            <button className="control-btn" onClick={toggleFullscreen} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
               {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
             </button>
           </div>

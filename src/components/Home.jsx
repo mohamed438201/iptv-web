@@ -1,21 +1,16 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { Play, Info, Search } from 'lucide-react';
 
-// DragScroll component handles mouse drag to scroll on desktop and touch on mobile
 function DragScroll({ className, children, ...props }) {
   const ref = useRef(null);
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-
     let isDown = false;
     let startX;
     let scrollLeft;
     let hasDragged = false;
-
     const onMouseDown = (e) => {
-      // Only drag on left click
       if (e.button !== 0) return;
       isDown = true;
       hasDragged = false;
@@ -23,9 +18,8 @@ function DragScroll({ className, children, ...props }) {
       scrollLeft = el.scrollLeft;
       el.style.cursor = 'grabbing';
       el.style.userSelect = 'none';
-      el.style.scrollSnapType = 'none'; // Temporarily disable snapping during drag
+      el.style.scrollSnapType = 'none';
     };
-
     const onMouseLeave = () => {
       if (!isDown) return;
       isDown = false;
@@ -33,16 +27,13 @@ function DragScroll({ className, children, ...props }) {
       el.style.removeProperty('user-select');
       el.style.scrollSnapType = '';
     };
-
     const onMouseUp = () => {
       if (!isDown) return;
       isDown = false;
       el.style.cursor = 'grab';
       el.style.removeProperty('user-select');
       el.style.scrollSnapType = '';
-      
       if (hasDragged) {
-        // Prevent click event on children if we actually dragged
         const preventClick = (event) => {
           event.stopImmediatePropagation();
           el.removeEventListener('click', preventClick, true);
@@ -50,26 +41,19 @@ function DragScroll({ className, children, ...props }) {
         el.addEventListener('click', preventClick, true);
       }
     };
-
     const onMouseMove = (e) => {
       if (!isDown) return;
       e.preventDefault();
       const x = e.pageX - el.offsetLeft;
-      const walk = (x - startX) * 1.5; // Scroll speed
-      if (Math.abs(x - startX) > 8) {
-        hasDragged = true;
-      }
+      const walk = (x - startX) * 1.5;
+      if (Math.abs(x - startX) > 8) hasDragged = true;
       el.scrollLeft = scrollLeft - walk;
     };
-
-    // Set initial cursor
     el.style.cursor = 'grab';
-
     el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('mouseleave', onMouseLeave);
     el.addEventListener('mouseup', onMouseUp);
     el.addEventListener('mousemove', onMouseMove);
-
     return () => {
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('mouseleave', onMouseLeave);
@@ -77,7 +61,6 @@ function DragScroll({ className, children, ...props }) {
       el.removeEventListener('mousemove', onMouseMove);
     };
   }, []);
-
   return (
     <div ref={ref} className={className} {...props}>
       {children}
@@ -86,132 +69,114 @@ function DragScroll({ className, children, ...props }) {
 }
 
 export default function Home({ 
-  channels, 
-  groups, 
-  currentGroup, 
-  onSelectGroup, 
-  onChannelSelect,
+  currentTab,
+  categories,
+  streams,
+  currentCategoryId,
+  onSelectCategory,
+  onItemSelect,
   searchQuery,
-  setSearchQuery,
-  currentTab
+  setSearchQuery
 }) {
 
-  const heroChannels = useMemo(() => {
-    if (!channels || channels.length === 0) return [];
-    if (searchQuery.trim() !== '') return []; // Hide hero when searching
-    const withLogos = channels.filter(c => c.logo);
-    if (withLogos.length >= 5) return withLogos.slice(0, 5);
-    return channels.slice(0, 5);
-  }, [channels, searchQuery]);
+  const heroItems = useMemo(() => {
+    if (!streams || streams.length === 0) return [];
+    if (searchQuery.trim() !== '') return [];
+    const withLogos = streams.filter(s => s.stream_icon || s.cover);
+    return withLogos.length >= 5 ? withLogos.slice(0, 5) : streams.slice(0, 5);
+  }, [streams, searchQuery]);
 
   const rowsData = useMemo(() => {
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
-      const filtered = channels.filter(c => c.name && c.name.toLowerCase().includes(query));
-      return [{
-        title: 'نتائج البحث',
-        channels: filtered
-      }];
+      const filtered = streams.filter(s => s.name && s.name.toLowerCase().includes(query));
+      return [{ title: 'نتائج البحث', items: filtered }];
     }
 
-    if (currentGroup === 'All') {
-      return Object.keys(groups).map(groupName => ({
-        title: groupName,
-        channels: groups[groupName].slice(0, 15)
-      })).filter(row => row.channels.length > 0);
+    if (currentCategoryId === 'all') {
+      const grouped = {};
+      streams.forEach(s => {
+        if (!grouped[s.category_id]) grouped[s.category_id] = [];
+        grouped[s.category_id].push(s);
+      });
+      return categories.map(cat => ({
+        title: cat.category_name,
+        items: (grouped[cat.category_id] || []).slice(0, 15)
+      })).filter(row => row.items.length > 0);
     } else {
-      if (!channels || channels.length === 0) return [];
+      const filtered = streams.filter(s => String(s.category_id) === String(currentCategoryId));
       const chunkSize = 15;
       const result = [];
-      const groupChannels = groups[currentGroup] || channels;
-      for (let i = 0; i < groupChannels.length; i += chunkSize) {
+      const catName = categories.find(c => String(c.category_id) === String(currentCategoryId))?.category_name || '';
+      for (let i = 0; i < filtered.length; i += chunkSize) {
         result.push({
-          title: `${currentGroup} - جزء ${Math.floor(i / chunkSize) + 1}`,
-          channels: groupChannels.slice(i, i + chunkSize)
+          title: `${catName} - جزء ${Math.floor(i / chunkSize) + 1}`,
+          items: filtered.slice(i, i + chunkSize)
         });
       }
       return result;
     }
-  }, [currentGroup, groups, channels, searchQuery]);
+  }, [currentCategoryId, categories, streams, searchQuery]);
 
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
     e.target.dataset.error = true;
-    e.target.src = 'https://placehold.co/256x256/111111/FFFFFF?text=TV';
+    e.target.src = 'https://placehold.co/256x384/111111/FFFFFF?text=No+Image';
+  };
+
+  const getLabel = () => {
+    if (currentTab === 'live') return 'مباشر';
+    if (currentTab === 'vod') return 'أفلام';
+    if (currentTab === 'series') return 'مسلسلات';
+    return '';
   };
 
   return (
     <div className="premium-home">
-      
-      {/* Absolute Premium Top Bar */}
       <div className="premium-top-bar">
-        <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectGroup('All'); setSearchQuery(''); }}>
+        <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectCategory('all'); setSearchQuery(''); }}>
           MY<span style={{ color: '#E50914' }}>IPTV</span>
         </h1>
       </div>
 
       {currentTab === 'search' && (
         <div style={{ padding: '0 24px', marginTop: '16px', marginBottom: '16px' }}>
-          <div className="premium-search-wrapper" style={{ width: '100%', maxWidth: 'none', background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '16px' }}>
+          <div className="premium-search-wrapper" style={{ width: '100%', background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '16px', display: 'flex', alignItems: 'center' }}>
             <Search className="premium-search-icon" size={20} />
             <input 
               type="text" 
               className="premium-search-input" 
-              placeholder="ابحث عن قناة..." 
+              placeholder="ابحث..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
-              style={{ fontSize: '16px' }}
+              style={{ fontSize: '16px', background: 'transparent', border: 'none', color: 'white', width: '100%', outline: 'none', marginRight: '8px' }}
             />
           </div>
         </div>
       )}
 
-      {/* Hero Section */}
-      {heroChannels.length > 0 && (
+      {heroItems.length > 0 && currentTab !== 'search' && (
         <div className="premium-hero-slider">
-          {heroChannels.map((featuredChannel, idx) => {
-            const imageSrc = featuredChannel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
+          {heroItems.map((item, idx) => {
+            const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
             return (
-              <div 
-                key={idx} 
-                className="premium-hero-slide" 
-                onClick={() => onChannelSelect(featuredChannel)}
-              >
+              <div key={idx} className="premium-hero-slide" onClick={() => onItemSelect(item)}>
                 <div className="premium-hero-ambient-glow" style={{ backgroundImage: `url(${imageSrc})` }}></div>
                 <div className="premium-hero-bg">
                   <img src={imageSrc} alt="bg" onError={handleImageError} />
                 </div>
-                <div className="premium-hero-vignette"></div>
                 <div className="premium-hero-gradient"></div>
-                
                 <div className="premium-hero-content">
-                  {featuredChannel.logo ? (
-                    <img 
-                      src={imageSrc} 
-                      alt="Logo" 
-                      className="premium-hero-logo" 
-                      onError={handleImageError} 
-                    />
-                  ) : (
-                    <h2 className="premium-hero-title">{featuredChannel.name}</h2>
-                  )}
-                  
+                  <h2 className="premium-hero-title">{item.name}</h2>
                   <div className="premium-hero-tags">
-                    <span className="premium-tag match">98% نسبة مطابقة</span>
-                    <span className="premium-tag age">+12</span>
                     <span className="premium-tag hd">HD</span>
-                    <span className="premium-tag group">{featuredChannel.group || 'بث مباشر'}</span>
+                    <span className="premium-tag group">{getLabel()}</span>
                   </div>
-
                   <div className="premium-hero-buttons">
-                    <button className="premium-btn-primary" onClick={(e) => { e.stopPropagation(); onChannelSelect(featuredChannel); }}>
+                    <button className="premium-btn-primary" onClick={(e) => { e.stopPropagation(); onItemSelect(item); }}>
                       <Play fill="black" size={20} />
-                      <span>شاهد الآن</span>
-                    </button>
-                    <button className="premium-btn-secondary" onClick={(e) => { e.stopPropagation(); onChannelSelect(featuredChannel); }}>
-                      <Info size={20} />
-                      <span>التفاصيل</span>
+                      <span>{currentTab === 'live' ? 'شاهد الآن' : 'التفاصيل'}</span>
                     </button>
                   </div>
                 </div>
@@ -221,50 +186,37 @@ export default function Home({
         </div>
       )}
 
-      {/* Pill Groups Menu */}
-      <div className="premium-groups-wrapper">
-        <DragScroll className="premium-groups-scroll">
-          <button 
-            className={`premium-pill ${currentGroup === 'All' ? 'active' : ''}`} 
-            onClick={() => onSelectGroup('All')}
-          >
-            الكل
-          </button>
-          {Object.keys(groups || {}).map((g, idx) => (
-            <button 
-              key={idx} 
-              className={`premium-pill ${currentGroup === g ? 'active' : ''}`} 
-              onClick={() => onSelectGroup(g)}
-            >
-              {g}
-            </button>
-          ))}
-        </DragScroll>
-      </div>
+      {currentTab !== 'search' && (
+        <div className="premium-groups-wrapper">
+          <DragScroll className="premium-groups-scroll">
+            <button className={`premium-pill ${currentCategoryId === 'all' ? 'active' : ''}`} onClick={() => onSelectCategory('all')}>الكل</button>
+            {categories.map((cat, idx) => (
+              <button key={idx} className={`premium-pill ${String(currentCategoryId) === String(cat.category_id) ? 'active' : ''}`} onClick={() => onSelectCategory(cat.category_id)}>
+                {cat.category_name}
+              </button>
+            ))}
+          </DragScroll>
+        </div>
+      )}
 
-      {/* Horizontal Rows */}
       <div className="premium-rows-container">
         {rowsData.map((row, index) => (
           <div className="premium-row" key={index}>
             <h3 className="premium-row-title">{row.title}</h3>
             <DragScroll className="premium-row-scroll">
-              {row.channels.map((channel, idx) => {
-                const imageSrc = channel.logo || `https://placehold.co/256x256/111111/FFFFFF?text=TV`;
+              {row.items.map((item, idx) => {
+                const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
+                const isVertical = currentTab === 'vod' || currentTab === 'series';
                 return (
-                  <div className="premium-card" key={idx} onClick={() => onChannelSelect(channel)}>
+                  <div className={`premium-card ${isVertical ? 'vertical-card' : ''}`} key={idx} onClick={() => onItemSelect(item)}>
                     <div className="premium-card-image-wrapper">
-                      <img 
-                        src={imageSrc} 
-                        alt={channel.name} 
-                        className="premium-card-img"
-                        onError={handleImageError} 
-                      />
+                      <img src={imageSrc} alt={item.name} className="premium-card-img" onError={handleImageError} />
                       <div className="premium-card-overlay">
                         <Play fill="white" size={32} />
                       </div>
-                      <div className="premium-card-badge">مباشر</div>
+                      {currentTab === 'live' && <div className="premium-card-badge">مباشر</div>}
                     </div>
-                    <span className="premium-card-title">{channel.name}</span>
+                    <span className="premium-card-title">{item.name}</span>
                   </div>
                 );
               })}
@@ -273,7 +225,6 @@ export default function Home({
         ))}
       </div>
       
-      {/* Spacing for Bottom Nav */}
       <div style={{ height: '100px' }}></div>
     </div>
   );

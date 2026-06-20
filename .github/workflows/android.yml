@@ -42,7 +42,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug -Dorg.gradle.java.home=$JAVA_HOME
           
+      - name: Create OTA Zip
+        run: |
+          cd dist
+          zip -r ../dist.zip .
+          
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            dist.zip

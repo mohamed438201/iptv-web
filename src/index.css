@@ -327,6 +327,15 @@ body {
     position: relative;
 }
 
+.vertical-card {
+    flex: 0 0 140px;
+}
+
+.vertical-card .premium-card-image-wrapper {
+    aspect-ratio: 2 / 3;
+}
+
+
 .channel-card-v {
     flex: 0 0 120px;
     scroll-snap-align: start;
