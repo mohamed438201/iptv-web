@@ -41,6 +41,8 @@ body {
 
 .app-container {
     width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
     height: 100vh;
     height: 100dvh;
     background-color: #050505;
