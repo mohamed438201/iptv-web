@@ -1,7 +1,7 @@
 {
   "name": "iptv",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Premium IPTV Web Player and App",
   "author": "Mohamed",
   "repository": {
