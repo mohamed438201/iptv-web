@@ -82,15 +82,7 @@ export default function Player({ channel, onBack }) {
           liveMaxLatencyDurationCount: 10,
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 20000,
-          levelLoadingTimeOut: 20000,
-          xhrSetup: function(xhr, url) {
-            let requestUrl = url;
-            const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-            if (!isNativeApp && requestUrl.includes('ugeen.live')) {
-              requestUrl = requestUrl.replace(/^https?:\/\/ugeen\.live(:\d+)?/, '/live');
-            }
-            xhr.open('GET', requestUrl, true);
-          }
+          levelLoadingTimeOut: 20000
         });
         
         hlsRef.current = hls;

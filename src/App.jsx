@@ -15,27 +15,73 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home');
   const [selectedChannel, setSelectedChannel] = useState(null);
   
+  const [currentTab, setCurrentTab] = useState('home');
+  const [searchQuery, setSearchQuery] = useState('');
+  
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-  const BASE_URL = isNativeApp ? 'http://ugeen.live:8080' : '/live';
-  const XTREAM_URL = `${BASE_URL}/get.php?username=Ugeen_VIP8Spjx2&password=p0Sy3J&type=m3u_plus&output=m3u8`;
+  
+  const ACCOUNTS = [
+    { host: 'http://xc.nv2.xyz:80', user: 'gamila2026', pass: 'gamila2026', proxy: '/nv2' },
+    { host: 'http://ea.saidisat.com:80', user: 'cnk6uc7hr9', pass: '4v8rzl4823', proxy: '/saidi' }
+  ];
 
   useEffect(() => {
     fetchPlaylist();
   }, []);
 
   const fetchPlaylist = async () => {
-    try {
-      const response = await fetch(XTREAM_URL);
-      if (!response.ok) throw new Error('Network response was not ok');
-      const text = await response.text();
-      parseM3U(text);
-    } catch (err) {
-      setError('Failed to load playlist. Please check your network or CORS settings.');
+    setIsLoading(true);
+    setError(null);
+    let success = false;
+
+    for (const acc of ACCOUNTS) {
+      try {
+        const baseUrl = isNativeApp ? acc.host : acc.proxy;
+        
+        // 1. Try standard M3U endpoint
+        const m3uUrl = `${baseUrl}/get.php?username=${acc.user}&password=${acc.pass}&type=m3u_plus&output=m3u8`;
+        const m3uResponse = await fetch(m3uUrl);
+        
+        if (m3uResponse.ok) {
+          const text = await m3uResponse.text();
+          if (text && text.includes('#EXTINF')) {
+            parseM3U(text, acc);
+            success = true;
+            break;
+          }
+        }
+        
+        // 2. Fallback to Xtream Codes JSON API
+        const catUrl = `${baseUrl}/player_api.php?username=${acc.user}&password=${acc.pass}&action=get_live_categories`;
+        const streamsUrl = `${baseUrl}/player_api.php?username=${acc.user}&password=${acc.pass}&action=get_live_streams`;
+        
+        const [catRes, streamsRes] = await Promise.all([
+          fetch(catUrl),
+          fetch(streamsUrl)
+        ]);
+        
+        if (catRes.ok && streamsRes.ok) {
+          const categories = await catRes.json();
+          const streams = await streamsRes.json();
+          
+          if (Array.isArray(categories) && Array.isArray(streams)) {
+            parseJSONAPI(categories, streams, acc);
+            success = true;
+            break;
+          }
+        }
+      } catch (err) {
+        console.log(`Failed to load from ${acc.host}`, err);
+      }
+    }
+
+    if (!success) {
+      setError('Failed to load playlist from all available servers. Please check your network or CORS settings.');
       setIsLoading(false);
     }
   };
 
-  const parseM3U = (data) => {
+  const parseM3U = (data, activeAccount) => {
     const lines = data.split('\n');
     const parsedChannels = [];
     const parsedGroups = {};
@@ -67,10 +113,8 @@ export default function App() {
           if (!currentChannelInfo.isMarker) {
             let safeUrl = line;
             if (!isNativeApp) {
-              if (safeUrl.startsWith('http://ugeen.live:8080')) {
-                safeUrl = safeUrl.replace('http://ugeen.live:8080', '/live');
-              } else if (safeUrl.startsWith('http://ugeen.live')) {
-                safeUrl = safeUrl.replace('http://ugeen.live', '/live');
+              if (safeUrl.startsWith(activeAccount.host)) {
+                safeUrl = safeUrl.replace(activeAccount.host, activeAccount.proxy);
               }
             }
             currentChannelInfo.url = safeUrl;
@@ -92,6 +136,49 @@ export default function App() {
       setCurrentGroup('All');
     } else {
       setError('No valid channels found.');
+    }
+    setIsLoading(false);
+  };
+
+  const parseJSONAPI = (categories, streams, activeAccount) => {
+    const parsedChannels = [];
+    const parsedGroups = {};
+    
+    // Map category ID to Category Name
+    const catMap = {};
+    categories.forEach(c => {
+      catMap[String(c.category_id)] = c.category_name;
+    });
+    
+    streams.forEach(stream => {
+      let groupName = catMap[String(stream.category_id)] || "Uncategorized";
+      let safeUrl = `${activeAccount.host}/live/${activeAccount.user}/${activeAccount.pass}/${stream.stream_id}.m3u8`;
+      
+      if (!isNativeApp) {
+        safeUrl = safeUrl.replace(activeAccount.host, activeAccount.proxy);
+      }
+      
+      let currentChannelInfo = {
+        name: stream.name,
+        logo: stream.stream_icon || '',
+        group: groupName,
+        isMarker: false,
+        url: safeUrl
+      };
+      
+      parsedChannels.push(currentChannelInfo);
+      if (!parsedGroups[groupName]) {
+        parsedGroups[groupName] = [];
+      }
+      parsedGroups[groupName].push(currentChannelInfo);
+    });
+    
+    if (parsedChannels.length > 0) {
+      setAllChannels(parsedChannels);
+      setGroups(parsedGroups);
+      setCurrentGroup('All');
+    } else {
+      setError('No valid channels found via API.');
     }
     setIsLoading(false);
   };
@@ -145,6 +232,9 @@ export default function App() {
           currentGroup={currentGroup}
           onSelectGroup={setCurrentGroup}
           onChannelSelect={handleChannelSelect}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          currentTab={currentTab}
         />
       )}
       
@@ -165,9 +255,24 @@ export default function App() {
       {currentView === 'home' && (
         <div className="bottom-nav-container">
           <div className="bottom-nav" style={{ direction: 'rtl' }}>
-            <button className="nav-item active"><HomeIcon size={24} /><span>الرئيسية</span></button>
-            <button className="nav-item"><Search size={24} /><span>البحث</span></button>
-            <button className="nav-item"><MonitorPlay size={24} /><span>مباشر</span></button>
+            <button 
+              className={`nav-item ${currentTab === 'home' ? 'active' : ''}`}
+              onClick={() => { setCurrentTab('home'); setSearchQuery(''); setCurrentGroup('All'); }}
+            >
+              <HomeIcon size={24} /><span>الرئيسية</span>
+            </button>
+            <button 
+              className={`nav-item ${currentTab === 'search' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('search')}
+            >
+              <Search size={24} /><span>البحث</span>
+            </button>
+            <button 
+              className={`nav-item ${currentTab === 'live' ? 'active' : ''}`}
+              onClick={() => { setCurrentTab('live'); setCurrentGroup('بث مباشر'); }}
+            >
+              <MonitorPlay size={24} /><span>مباشر</span>
+            </button>
           </div>
         </div>
       )}
