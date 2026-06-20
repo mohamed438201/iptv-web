@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause, Maximize, Minimize, ChevronRight, Loader2, AlertCircle, Volume2, VolumeX, RefreshCw } from 'lucide-react';
-import Hls from 'hls.js';
+import videojs from 'video.js';
+import 'video.js/dist/video-js.css';
 import './Player.css';
 
 export default function Player({ channel, onBack }) {
   const videoRef = useRef(null);
+  const playerRef = useRef(null);
   const containerRef = useRef(null);
-  const hlsRef = useRef(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,119 +36,112 @@ export default function Player({ channel, onBack }) {
     setErrorMsg(null);
     setIsPlaying(false);
 
-    const video = videoRef.current;
     let finalUrl = channel.url;
-    
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
     const isLive = channel.type === 'live';
-    const isNativeApp = window.Capacitor !== undefined; // Capacitor Android
     
-    // Fallback TS to M3U8 for better HLS support
-    if (finalUrl.endsWith('.ts')) {
+    // For Xtream Codes, we prefer .m3u8 for HLS compatibility in video.js
+    if (isLive && finalUrl.endsWith('.ts')) {
       finalUrl = finalUrl.replace(/\.ts$/, '.m3u8');
     }
 
-    const attemptPlay = () => {
-      setIsLoading(false);
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch(e => {
-             console.error("Play interrupted:", e);
-             setIsPlaying(false);
-          });
-      }
-    };
+    // Initialize video.js if not initialized yet
+    if (!playerRef.current) {
+      const videoElement = videoRef.current;
+      if (!videoElement) return;
 
-    if (!isLive) {
-      // VOD (MP4, MKV)
-      video.src = finalUrl;
-      video.onloadedmetadata = attemptPlay;
-      video.onerror = () => {
+      const player = videojs(videoElement, {
+        controls: false,
+        autoplay: true,
+        preload: 'auto',
+        fluid: false,
+        html5: {
+          vhs: {
+            overrideNative: !window.Capacitor, // Use VHS on web, let Capacitor native handle if needed
+            enableLowInitialPlaylist: true,
+            smoothQualityChange: true,
+          },
+          nativeAudioTracks: false,
+          nativeVideoTracks: false
+        }
+      }, () => {
+        // Player is ready
+      });
+
+      player.on('play', () => setIsPlaying(true));
+      player.on('pause', () => setIsPlaying(false));
+      player.on('playing', () => setIsLoading(false));
+      player.on('waiting', () => setIsLoading(true));
+      player.on('error', () => {
         setIsLoading(false);
-        setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
-      };
-    } else {
-      // LIVE (M3U8)
-      if (Hls.isSupported() && !isNativeApp) {
-        const hls = new Hls({
-          maxBufferLength: 30,
-          maxMaxBufferLength: 600,
-          enableWorker: true
-        });
-        hlsRef.current = hls;
-
-        hls.loadSource(finalUrl);
-        hls.attachMedia(video);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setIsLoading(false);
-          attemptPlay();
-        });
-
-        hls.on(Hls.Events.ERROR, (event, data) => {
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                setErrorMsg('خطأ في الاتصال بالشبكة...');
-                hls.startLoad();
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
-                break;
-              default:
-                hls.destroy();
-                setErrorMsg('تعذر تشغيل هذا البث حالياً.');
-                break;
-            }
+        const error = player.error();
+        if (error) {
+          console.error('Video.js Error:', error);
+          if (error.code === 2) {
+            setErrorMsg('خطأ في الاتصال بالشبكة...');
+          } else if (error.code === 4) {
+            setErrorMsg('تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)');
+          } else {
+            setErrorMsg('تعذر تشغيل هذا البث حالياً.');
           }
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl') || isNativeApp) {
-        // Native HLS fallback (Safari, iOS, Capacitor Android)
-        video.src = finalUrl;
-        video.addEventListener('loadedmetadata', () => {
-          setIsLoading(false);
-          attemptPlay();
-        });
-        video.onerror = () => {
-          setIsLoading(false);
-          setErrorMsg("فشل التشغيل المباشر");
-        };
-      }
+        }
+      });
+      
+      // Attempt to play once ready
+      player.on('ready', () => {
+        const playPromise = player.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(() => {
+               setIsPlaying(false);
+            });
+        }
+      });
+
+      playerRef.current = player;
     }
+
+    // Update source
+    const player = playerRef.current;
     
+    let type = 'application/x-mpegURL'; // default to HLS
+    if (!isLive) {
+        if (finalUrl.endsWith('.mp4')) type = 'video/mp4';
+        else if (finalUrl.endsWith('.mkv')) type = 'video/webm'; // fallback
+    }
+
+    player.src({ src: finalUrl, type });
+    player.load();
+    player.play().catch(e => console.error("Play error:", e));
+
     return () => {
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, [channel, refreshCount]);
 
+  // Clean up player on unmount
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-      videoRef.current.muted = isMuted;
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (playerRef.current) {
+      playerRef.current.volume(volume);
+      playerRef.current.muted(isMuted);
     }
   }, [volume, isMuted]);
 
   const togglePlay = (e) => {
     if (e) e.stopPropagation();
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play();
+    if (!playerRef.current) return;
+    if (playerRef.current.paused()) {
+      playerRef.current.play();
       setIsPlaying(true);
     } else {
-      videoRef.current.pause();
+      playerRef.current.pause();
       setIsPlaying(false);
     }
   };
@@ -185,13 +179,13 @@ export default function Player({ channel, onBack }) {
       onTouchStart={handleInteraction}
       onClick={togglePlay}
     >
-      <video 
-        ref={videoRef} 
-        className="video-element"
-        playsInline
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-      ></video>
+      <div data-vjs-player style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+        <video 
+          ref={videoRef} 
+          className="video-js vjs-fill video-element"
+          playsInline
+        ></video>
+      </div>
 
       {isLoading && (
         <div className="error-message" style={{background: 'rgba(0,0,0,0.5)'}}>
