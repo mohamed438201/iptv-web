@@ -1,7 +1,7 @@
 {
   "name": "iptv",
   "private": true,
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Premium IPTV Web Player and App",
   "author": "Mohamed",
   "repository": {
@@ -25,8 +25,7 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis",
-      "icon": "public/favicon.svg"
+      "target": "nsis"
     },
     "publish": [
       {

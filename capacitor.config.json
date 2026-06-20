@@ -3,11 +3,15 @@
   "appName": "IPTV Premium",
   "webDir": "dist",
   "server": {
-    "cleartext": true
+    "cleartext": true,
+    "allowNavigation": ["*"]
   },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
     }
+  },
+  "android": {
+    "appendUserAgent": "VLC/3.0.9 LibVLC/3.0.9"
   }
 }
