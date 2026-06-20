@@ -63,6 +63,14 @@ export default function App() {
           const currentVersion = await CapacitorUpdater.current();
           
           if (currentVersion.version !== latestVersion) {
+            const failKey = `ota_fails_${latestVersion}`;
+            const failedAttempts = parseInt(localStorage.getItem(failKey) || '0');
+            if (failedAttempts >= 3) {
+              console.log('Skipping update loop for', latestVersion);
+              return;
+            }
+            localStorage.setItem(failKey, (failedAttempts + 1).toString());
+
             setUpdateMessage('جاري تحميل تحديث جديد...');
             const newBundle = await CapacitorUpdater.download({
               url: zipAsset.browser_download_url,
