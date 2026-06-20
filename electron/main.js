@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,8 +12,9 @@ function createWindow() {
     width: 1280,
     height: 720,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
       webSecurity: false // Disable webSecurity to bypass CORS and mixed content for IPTV streams
     },
     autoHideMenuBar: true
@@ -29,27 +31,30 @@ function createWindow() {
     // In production, load the built React app
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  return mainWindow;
 }
 
 app.whenReady().then(() => {
-  createWindow();
+  const mainWindow = createWindow();
 
   autoUpdater.checkForUpdatesAndNotify();
 
   autoUpdater.on('update-available', () => {
-    // Notify user optionally if needed, but checkForUpdatesAndNotify already does it
+    mainWindow.webContents.send('update-available');
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    mainWindow.webContents.send('download-progress', progressObj.percent);
   });
 
   autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'تحديث جديد جاهز!',
-      message: 'تم تحميل تحديث جديد، هل ترغب في إعادة تشغيل البرنامج الآن لتثبيته؟',
-      buttons: ['إعادة التشغيل', 'لاحقاً']
-    }).then((result) => {
-      if (result.response === 0) {
-        autoUpdater.quitAndInstall();
-      }
+    mainWindow.webContents.send('update-downloaded');
+  });
+
+  import('electron').then(({ ipcMain }) => {
+    ipcMain.on('restart-app', () => {
+      autoUpdater.quitAndInstall();
     });
   });
 

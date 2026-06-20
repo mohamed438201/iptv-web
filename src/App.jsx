@@ -18,6 +18,9 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
   
+  const [updateMessage, setUpdateMessage] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(null);
+  
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
   
   const ACCOUNTS = [
@@ -27,7 +30,50 @@ export default function App() {
 
   useEffect(() => {
     fetchPlaylist();
+    setupOTAUpdaters();
   }, []);
+
+  const setupOTAUpdaters = async () => {
+    // Windows OTA (Electron)
+    if (window.electronAPI) {
+      window.electronAPI.onUpdateAvailable(() => setUpdateMessage('جاري تحميل تحديث جديد...'));
+      window.electronAPI.onDownloadProgress((_, percent) => setUpdateProgress(Math.round(percent)));
+      window.electronAPI.onUpdateDownloaded(() => {
+        setUpdateMessage('اكتمل التحميل. سيتم التثبيت عند إعادة التشغيل.');
+        setTimeout(() => window.electronAPI.restartApp(), 3000);
+      });
+    }
+
+    // Android OTA (Capacitor + Capgo)
+    if (window.Capacitor && window.Capacitor.getPlatform() === 'android') {
+      try {
+        const { CapacitorUpdater } = await import('@capgo/capacitor-updater');
+        await CapacitorUpdater.notifyAppReady();
+        
+        // Fetch latest release from GitHub
+        const res = await fetch('https://api.github.com/repos/mohamed438201/iptv-web/releases/latest');
+        const release = await res.json();
+        const zipAsset = release.assets?.find(a => a.name === 'dist.zip');
+        
+        if (zipAsset) {
+          const latestVersion = release.tag_name;
+          const currentVersion = await CapacitorUpdater.current();
+          
+          if (currentVersion.version !== latestVersion) {
+            setUpdateMessage('جاري تحميل تحديث جديد (أندرويد)...');
+            const newBundle = await CapacitorUpdater.download({
+              url: zipAsset.browser_download_url,
+              version: latestVersion
+            });
+            setUpdateMessage('جاري تثبيت التحديث...');
+            await CapacitorUpdater.set(newBundle); // This will restart the app
+          }
+        }
+      } catch (err) {
+        console.log('Android OTA Error:', err);
+      }
+    }
+  };
 
   const fetchPlaylist = async () => {
     setIsLoading(true);
@@ -225,6 +271,12 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {updateMessage && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: '#E50914', color: 'white', padding: '10px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold' }}>
+          {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
+        </div>
+      )}
+      
       {currentView === 'home' && (
         <Home 
           channels={displayedChannels}

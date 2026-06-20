@@ -90,9 +90,11 @@ export default function Home({
   groups, 
   currentGroup, 
   onSelectGroup, 
-  onChannelSelect
+  onChannelSelect,
+  searchQuery,
+  setSearchQuery,
+  currentTab
 }) {
-  const [searchQuery, setSearchQuery] = useState('');
 
   const heroChannels = useMemo(() => {
     if (!channels || channels.length === 0) return [];
@@ -146,20 +148,24 @@ export default function Home({
         <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectGroup('All'); setSearchQuery(''); }}>
           MY<span style={{ color: '#E50914' }}>IPTV</span>
         </h1>
-        <div className="premium-top-actions" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div className="premium-search-wrapper">
-            <Search className="premium-search-icon" size={16} />
+      </div>
+
+      {currentTab === 'search' && (
+        <div style={{ padding: '0 24px', marginTop: '16px', marginBottom: '16px' }}>
+          <div className="premium-search-wrapper" style={{ width: '100%', maxWidth: 'none', background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '16px' }}>
+            <Search className="premium-search-icon" size={20} />
             <input 
               type="text" 
               className="premium-search-input" 
               placeholder="ابحث عن قناة..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+              style={{ fontSize: '16px' }}
             />
           </div>
-          <span style={{ color: 'white', fontWeight: 'bold', cursor: 'pointer', display: 'none' }} onClick={() => { onSelectGroup('All'); setSearchQuery(''); }}>الرئيسية</span>
         </div>
-      </div>
+      )}
 
       {/* Hero Section */}
       {heroChannels.length > 0 && (
