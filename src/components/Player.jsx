@@ -71,57 +71,45 @@ export default function Player({ channel, onBack }) {
         setErrorMsg("تعذر التشغيل");
       };
     } else {
-      const isCapacitor = window.Capacitor !== undefined;
-      
-      // On Capacitor (Android), native playback avoids CORS and JS bridge overhead
-      if (isCapacitor || video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = finalUrl;
-        video.addEventListener('loadedmetadata', attemptPlay);
-        video.onerror = () => {
-          setIsLoading(false);
-          setErrorMsg("تعذر التشغيل");
-        };
-      } else if (Hls.isSupported()) {
+      if (Hls.isSupported()) {
         const hls = new Hls({
-          maxBufferLength: 60,
-          maxMaxBufferLength: 120,
-          maxBufferSize: 60 * 1000 * 1000,
-          enableWorker: true,
-          lowLatencyMode: false,
-          liveSyncDurationCount: 3,
-          liveMaxLatencyDurationCount: 10,
-          fragLoadingTimeOut: 20000,
-          manifestLoadingTimeOut: 20000,
-          levelLoadingTimeOut: 20000
+          xhrSetup: (xhr, url) => {}
         });
-        
         hlsRef.current = hls;
+
         hls.loadSource(finalUrl);
         hls.attachMedia(video);
-        
-        hls.on(Hls.Events.MANIFEST_PARSED, attemptPlay);
-        
-        hls.on(Hls.Events.ERROR, function (event, data) {
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setIsLoading(false);
+          video.play().catch(e => console.log('Auto-play prevented:', e));
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                setIsLoading(false);
-                hls.destroy();
-                setErrorMsg("خطأ في الاتصال بالبث.");
+                setErrorMsg('خطأ في الاتصال بالشبكة أو البث غير متاح.');
+                hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
+                setErrorMsg('خطأ في تشغيل الوسائط، جاري المحاولة...');
                 hls.recoverMediaError();
                 break;
               default:
-                setIsLoading(false);
                 hls.destroy();
-                setErrorMsg("تعذر التشغيل.");
+                setErrorMsg('تعذر تشغيل هذا البث حالياً.');
                 break;
             }
           }
         });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = finalUrl;
+        video.addEventListener('loadedmetadata', () => {
+          setIsLoading(false);
+          video.play().catch(e => console.log('Auto-play prevented:', e));
+        });
       }
-    }
     
     return () => {
       video.pause();
