@@ -71,7 +71,17 @@ export default function Player({ channel, onBack }) {
         setErrorMsg("تعذر التشغيل");
       };
     } else {
-      if (Hls.isSupported()) {
+      const isCapacitor = window.Capacitor !== undefined;
+      
+      // On Capacitor (Android), native playback avoids CORS and JS bridge overhead
+      if (isCapacitor || video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = finalUrl;
+        video.addEventListener('loadedmetadata', attemptPlay);
+        video.onerror = () => {
+          setIsLoading(false);
+          setErrorMsg("تعذر التشغيل");
+        };
+      } else if (Hls.isSupported()) {
         const hls = new Hls({
           maxBufferLength: 60,
           maxMaxBufferLength: 120,
@@ -110,13 +120,6 @@ export default function Player({ channel, onBack }) {
             }
           }
         });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = finalUrl;
-        video.addEventListener('loadedmetadata', attemptPlay);
-        video.onerror = () => {
-          setIsLoading(false);
-          setErrorMsg("تعذر التشغيل");
-        };
       }
     }
     
@@ -187,7 +190,6 @@ export default function Player({ channel, onBack }) {
       <video 
         ref={videoRef} 
         className="video-element"
-        crossOrigin="anonymous" 
         playsInline
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
