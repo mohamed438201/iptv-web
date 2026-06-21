@@ -49,6 +49,8 @@ export default function Player({ channel, onBack }) {
       const videoElement = videoRef.current;
       if (!videoElement) return;
 
+      const isIOS = window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'ios';
+
       const player = videojs(videoElement, {
         controls: false,
         autoplay: true,
@@ -56,7 +58,7 @@ export default function Player({ channel, onBack }) {
         fluid: false,
         html5: {
           vhs: {
-            overrideNative: !window.Capacitor, // Use VHS on web, let Capacitor native handle if needed
+            overrideNative: !isIOS, // Use VHS on web/android, let iOS native handle if needed
             enableLowInitialPlaylist: true,
             smoothQualityChange: true,
           },
