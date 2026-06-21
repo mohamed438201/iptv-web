@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import { Play, Info, Search } from 'lucide-react';
+import { Play, Info, Search, RefreshCw } from 'lucide-react';
 
 function DragScroll({ className, children, ...props }) {
   const ref = useRef(null);
@@ -131,12 +131,40 @@ export default function Home({
     return '';
   };
 
+  const isElectron = window.electronAPI !== undefined;
+
+  const handleCheckUpdate = () => {
+    if (isElectron) {
+      window.electronAPI.checkForUpdates();
+    }
+  };
+
   return (
     <div className="premium-home">
-      <div className="premium-top-bar">
+      <div className="premium-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectCategory('all'); setSearchQuery(''); }}>
           MY<span style={{ color: '#E50914' }}>IPTV</span>
         </h1>
+        {isElectron && (
+          <button 
+            onClick={handleCheckUpdate}
+            style={{ 
+              background: 'rgba(255,255,255,0.1)', 
+              border: 'none', 
+              color: 'white', 
+              padding: '8px 12px', 
+              borderRadius: '8px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            <RefreshCw size={16} />
+            تحديث
+          </button>
+        )}
       </div>
 
       {currentTab === 'search' && (

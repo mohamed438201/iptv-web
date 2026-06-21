@@ -41,6 +41,11 @@ export default function App() {
 
   const setupOTAUpdaters = async () => {
     if (window.electronAPI) {
+      window.electronAPI.onCheckingForUpdate(() => setUpdateMessage('جاري البحث عن تحديثات...'));
+      window.electronAPI.onUpdateNotAvailable(() => {
+        setUpdateMessage('أنت تستخدم أحدث نسخة.');
+        setTimeout(() => setUpdateMessage(null), 3000);
+      });
       window.electronAPI.onUpdateAvailable(() => setUpdateMessage('جاري تحميل تحديث جديد...'));
       window.electronAPI.onDownloadProgress((_, percent) => setUpdateProgress(Math.round(percent)));
       window.electronAPI.onUpdateDownloaded(() => {
@@ -87,7 +92,11 @@ export default function App() {
   };
 
   const getApiUrl = (action) => {
-    const baseUrl = isNativeApp ? SERVER.host : SERVER.proxy;
+    // If running in development (Vite), always use the proxy to avoid HTTPS upgrade issues
+    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // If Capacitor or production Electron, use host directly
+    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+    const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
     return `${baseUrl}/player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
   };
 
@@ -130,6 +139,7 @@ export default function App() {
 
       setIsLoading(false);
     } catch (err) {
+      console.error("Fetch Data Error:", err);
       setError('تعذر الاتصال بالسيرفر أو جلب البيانات. تأكد من اتصالك بالانترنت.');
       setIsLoading(false);
     }

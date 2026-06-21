@@ -704,6 +704,7 @@ body {
     align-items: center;
     gap: 12px;
     width: 100%;
+    pointer-events: auto;
 }
 
 .bottom-nav-pill {
@@ -882,62 +883,9 @@ body {
     justify-content: center;
     z-index: 1000;
     pointer-events: none;
-}
-.bottom-nav {
-    background: rgba(15, 15, 15, 0.65);
-    backdrop-filter: saturate(180%) blur(24px);
-    -webkit-backdrop-filter: saturate(180%) blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 100px;
-    padding: 6px;
-    display: flex;
-    gap: 6px;
-    pointer-events: auto;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    direction: rtl;
+    padding: 0 24px;
 }
 
-.nav-item {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 16px;
-    border-radius: 100px;
-    color: #999;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.nav-item svg {
-    transition: all 0.4s ease;
-    width: 20px;
-    height: 20px;
-}
-
-.nav-item:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.nav-item.active {
-    background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
-    color: #000;
-    transform: scale(1.02);
-    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
-    padding: 8px 20px;
-}
-
-.nav-item.active svg {
-    stroke-width: 2.5;
-    stroke: #000;
-}
 
 .play-pause-btn {
     background: none;

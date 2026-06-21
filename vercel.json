@@ -5,6 +5,10 @@
       "destination": "http://ugeen.live:8080/:match*"
     },
     {
+      "source": "/nv2/:match*",
+      "destination": "http://xc.nv2.xyz:80/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

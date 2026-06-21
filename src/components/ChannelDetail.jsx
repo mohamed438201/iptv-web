@@ -3,19 +3,25 @@ import { Play, Bookmark, Download, Share, Loader2 } from 'lucide-react';
 
 export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const [seriesInfo, setSeriesInfo] = useState(null);
+  const [vodInfo, setVodInfo] = useState(null);
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (item.type === 'series' && server) {
       fetchSeriesInfo();
+    } else if (item.type === 'vod' && server) {
+      fetchVodInfo();
     }
   }, [item]);
 
   const fetchSeriesInfo = async () => {
     setLoading(true);
     try {
-      const baseUrl = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron')) ? server.host : server.proxy;
+      const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
+      const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+      const baseUrl = useProxy ? server.proxy : server.host;
       const url = `${baseUrl}/player_api.php?username=${server.user}&password=${server.pass}&action=get_series_info&series_id=${item.series_id}`;
       const res = await fetch(url);
       if (res.ok) {
@@ -35,6 +41,25 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
     setLoading(false);
   };
 
+  const fetchVodInfo = async () => {
+    setLoading(true);
+    try {
+      const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
+      const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+      const baseUrl = useProxy ? server.proxy : server.host;
+      const url = `${baseUrl}/player_api.php?username=${server.user}&password=${server.pass}&action=get_vod_info&vod_id=${item.stream_id}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setVodInfo(data.info);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
   if (!item) return null;
 
   const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
@@ -46,7 +71,10 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   };
 
   const handlePlayEpisode = (ep) => {
-    const baseUrl = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron')) ? server.host : server.proxy;
+    const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
+    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+    const baseUrl = useProxy ? server.proxy : server.host;
     const playUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ep.container_extension || 'mp4'}`;
     const enhancedItem = {
       ...ep,
@@ -107,7 +135,16 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
         </div>
 
         <div className="detail-description" style={{ padding: '0 24px' }}>
-          {seriesInfo?.plot || item.plot || 'لا يوجد وصف متاح لهذا العرض.'}
+          {seriesInfo?.plot || vodInfo?.plot || item.plot || 'لا يوجد وصف متاح لهذا العرض.'}
+          
+          {item.type === 'vod' && vodInfo && (
+            <div style={{ marginTop: '16px', fontSize: '14px', color: '#ccc' }}>
+              {vodInfo.director && <p style={{ marginBottom: '4px' }}><strong>المخرج:</strong> {vodInfo.director}</p>}
+              {vodInfo.cast && <p style={{ marginBottom: '4px' }}><strong>الممثلون:</strong> {vodInfo.cast}</p>}
+              {vodInfo.genre && <p style={{ marginBottom: '4px' }}><strong>التصنيف:</strong> {vodInfo.genre}</p>}
+              {vodInfo.releasedate && <p style={{ marginBottom: '4px' }}><strong>تاريخ الإصدار:</strong> {vodInfo.releasedate}</p>}
+            </div>
+          )}
         </div>
 
         {item.type === 'series' && (

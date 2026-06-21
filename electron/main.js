@@ -40,6 +40,14 @@ app.whenReady().then(() => {
 
   autoUpdater.checkForUpdatesAndNotify();
 
+  autoUpdater.on('checking-for-update', () => {
+    mainWindow.webContents.send('checking-for-update');
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-not-available');
+  });
+
   autoUpdater.on('update-available', () => {
     mainWindow.webContents.send('update-available');
   });
@@ -55,6 +63,10 @@ app.whenReady().then(() => {
   import('electron').then(({ ipcMain }) => {
     ipcMain.on('restart-app', () => {
       autoUpdater.quitAndInstall();
+    });
+    
+    ipcMain.on('check-for-updates', () => {
+      autoUpdater.checkForUpdates();
     });
   });
 
