@@ -87,6 +87,8 @@ export default function App() {
         }
       } catch (err) {
         console.log('OTA Error:', err);
+        setUpdateMessage('فشل في التحديث، يرجى المحاولة لاحقاً.');
+        setTimeout(() => setUpdateMessage(null), 4000);
       }
     }
   };
@@ -215,8 +217,11 @@ export default function App() {
   return (
     <div className="app-container">
       {updateMessage && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)' }}>
-          {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
+        <div className="update-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ flex: 1 }}>
+            {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
+          </div>
+          <button onClick={() => setUpdateMessage(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px', padding: '0 8px' }}>✕</button>
         </div>
       )}
       
