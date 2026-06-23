@@ -93,13 +93,47 @@ export default function App() {
     }
   };
 
-  const getApiUrl = (action) => {
-    // If running in development (Vite), always use the proxy to avoid HTTPS upgrade issues
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.setDiscordActivity) {
+      const updateRPC = () => {
+        if (currentView === 'player' && selectedItem) {
+          let title = String(selectedItem.name || selectedItem.title || 'Video');
+          if (title.length > 100) title = title.substring(0, 100) + '...';
+          window.electronAPI.setDiscordActivity(`Watching: ${title}`, 'Programmer: Mohamed Sherif');
+        } else if (currentView === 'detail' && selectedItem) {
+          let title = String(selectedItem.name || selectedItem.title || 'Video');
+          if (title.length > 100) title = title.substring(0, 100) + '...';
+          window.electronAPI.setDiscordActivity(`Viewing: ${title}`, 'Programmer: Mohamed Sherif');
+        } else {
+          // Send empty string to clear activity
+          window.electronAPI.setDiscordActivity('', '');
+        }
+      };
+      
+      // Add a slight delay to prevent Discord rate limits from dropping consecutive quick updates
+      const timer = setTimeout(updateRPC, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentView, selectedItem]);
+
+  const fetchData = async (action) => {
     const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    // If Capacitor or production Electron, use host directly
+    const query = `player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
+
+    if (window.electronAPI && window.electronAPI.fetchApi) {
+      const fullUrl = `${SERVER.host}/${query}`;
+      const res = await window.electronAPI.fetchApi(fullUrl);
+      if (!res.ok) throw new Error(`Server Error: ${res.status} ${res.error || ''}`);
+      return res.data;
+    }
+
     const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
     const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
-    return `${baseUrl}/player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
+    const finalUrl = `${baseUrl}/${query}`;
+    
+    const response = await fetch(finalUrl);
+    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+    return await response.json();
   };
 
   const fetchAllData = async () => {
@@ -107,37 +141,34 @@ export default function App() {
     setError(null);
     try {
       setLoadingText('جاري تحميل باقات القنوات المباشرة...');
-      const [liveCatRes, liveStrRes] = await Promise.all([
-        fetch(getApiUrl('get_live_categories')),
-        fetch(getApiUrl('get_live_streams'))
-      ]);
-      
-      if (!liveCatRes.ok || !liveStrRes.ok) throw new Error('فشل الاتصال بالسيرفر');
-      
-      const lCats = await liveCatRes.json();
-      const lStrs = await liveStrRes.json();
-      setLiveCategories(lCats);
-      setLiveStreams(lStrs);
+      try {
+        const [lCats, lStrs] = await Promise.all([
+          fetchData('get_live_categories'),
+          fetchData('get_live_streams')
+        ]);
+        setLiveCategories(lCats);
+        setLiveStreams(lStrs);
+      } catch (err) { console.error("Live Fetch Error:", err); }
 
       setLoadingText('جاري تحميل مكتبة الأفلام...');
-      const [vodCatRes, vodStrRes] = await Promise.all([
-        fetch(getApiUrl('get_vod_categories')),
-        fetch(getApiUrl('get_vod_streams'))
-      ]);
-      if (vodCatRes.ok && vodStrRes.ok) {
-        setVodCategories(await vodCatRes.json());
-        setVodStreams(await vodStrRes.json());
-      }
+      try {
+        const [vodCats, vodStrs] = await Promise.all([
+          fetchData('get_vod_categories'),
+          fetchData('get_vod_streams')
+        ]);
+        setVodCategories(vodCats);
+        setVodStreams(vodStrs);
+      } catch (err) { console.error("VOD Fetch Error:", err); }
 
       setLoadingText('جاري تحميل مكتبة المسلسلات...');
-      const [serCatRes, serStrRes] = await Promise.all([
-        fetch(getApiUrl('get_series_categories')),
-        fetch(getApiUrl('get_series'))
-      ]);
-      if (serCatRes.ok && serStrRes.ok) {
-        setSeriesCategories(await serCatRes.json());
-        setSeriesStreams(await serStrRes.json());
-      }
+      try {
+        const [serCats, serStrs] = await Promise.all([
+          fetchData('get_series_categories'),
+          fetchData('get_series')
+        ]);
+        setSeriesCategories(serCats);
+        setSeriesStreams(serStrs);
+      } catch (err) { console.error("Series Fetch Error:", err); }
 
       setIsLoading(false);
     } catch (err) {
@@ -148,9 +179,22 @@ export default function App() {
   };
 
   const generatePlayUrl = (streamId, type = 'live', extension = 'm3u8') => {
-    const baseUrl = isNativeApp ? SERVER.host : SERVER.proxy;
+    const isElectron = window.electronAPI && window.electronAPI.fetchApi;
     const path = type === 'live' ? 'live' : (type === 'movie' ? 'movie' : 'series');
-    return `${baseUrl}/${path}/${SERVER.user}/${SERVER.pass}/${streamId}.${extension}`;
+    const queryPath = `/${path}/${SERVER.user}/${SERVER.pass}/${streamId}.${extension}`;
+
+    if (isElectron) {
+      // Use local HTTP proxy to bypass Chromium HSTS/CORS and Cloudflare issues
+      const baseUrl = SERVER.host.replace(/^https?:\/\//i, 'http://');
+      const targetUrl = `${baseUrl}${queryPath}`;
+      return `http://127.0.0.1:12121/${targetUrl}`;
+    }
+
+    // Web / Capacitor
+    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+    const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
+    return `${baseUrl}${queryPath}`;
   };
 
   const handleSelect = (item, type) => {
@@ -216,67 +260,71 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {updateMessage && (
-        <div className="update-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ flex: 1 }}>
-            {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
+      {currentView !== 'player' && (
+        <aside className="app-sidebar">
+          <div className="sidebar-brand" onClick={() => { setCurrentView('home'); setCurrentCategoryId('all'); setSearchQuery(''); }}>
+            MY<span>IPTV</span> <span style={{ fontSize: '12px', color: '#888', verticalAlign: 'middle', fontWeight: '500', letterSpacing: '0' }}>v2.0</span>
           </div>
-          <button onClick={() => setUpdateMessage(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px', padding: '0 8px' }}>✕</button>
-        </div>
-      )}
-      
-      {currentView === 'home' && (
-        <Home 
-          currentTab={currentTab}
-          categories={categories}
-          streams={streams}
-          currentCategoryId={currentCategoryId}
-          onSelectCategory={setCurrentCategoryId}
-          onItemSelect={(item) => handleSelect(item, currentTab)}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-        />
-      )}
-      
-      {currentView === 'detail' && selectedItem && (
-        <ChannelDetail 
-          item={selectedItem}
-          server={SERVER}
-          onBack={() => setCurrentView('home')}
-          onPlay={handlePlay}
-        />
-      )}
-      
-      {currentView === 'player' && selectedItem && (
-        <Player 
-          channel={selectedItem} 
-          onBack={() => setCurrentView(selectedItem.type === 'live' ? 'home' : 'detail')} 
-        />
+          <nav className="sidebar-nav">
+            <button className={`sidebar-nav-item ${currentTab === 'live' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('live'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
+              <MonitorPlay size={22} />
+              <span>مباشر</span>
+            </button>
+            <button className={`sidebar-nav-item ${currentTab === 'vod' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('vod'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
+              <Film size={22} />
+              <span>أفلام</span>
+            </button>
+            <button className={`sidebar-nav-item ${currentTab === 'series' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('series'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
+              <Tv size={22} />
+              <span>مسلسلات</span>
+            </button>
+            <button className={`sidebar-nav-item ${currentTab === 'search' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('search'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
+              <Search size={22} />
+              <span>بحث</span>
+            </button>
+          </nav>
+        </aside>
       )}
 
-      {currentView === 'home' && (
-        <div className="bottom-nav-container">
-          <div className="bottom-nav-wrapper">
-            <div className="bottom-nav-pill">
-              <button className={`nav-item ${currentTab === 'live' ? 'active' : ''}`} onClick={() => { setCurrentTab('live'); setCurrentCategoryId('all'); }}>
-                <div className="nav-icon-container"><MonitorPlay size={22} /></div>
-                <span>مباشر</span>
-              </button>
-              <button className={`nav-item ${currentTab === 'vod' ? 'active' : ''}`} onClick={() => { setCurrentTab('vod'); setCurrentCategoryId('all'); }}>
-                <div className="nav-icon-container"><Film size={22} /></div>
-                <span>أفلام</span>
-              </button>
-              <button className={`nav-item ${currentTab === 'series' ? 'active' : ''}`} onClick={() => { setCurrentTab('series'); setCurrentCategoryId('all'); }}>
-                <div className="nav-icon-container"><Tv size={22} /></div>
-                <span>مسلسلات</span>
-              </button>
+      <main className="app-main-content">
+        {updateMessage && (
+          <div className="update-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
             </div>
-            <button className={`nav-fab-search ${currentTab === 'search' ? 'active' : ''}`} onClick={() => setCurrentTab('search')}>
-              <Search size={22} />
-            </button>
+            <button onClick={() => setUpdateMessage(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px', padding: '0 8px' }}>✕</button>
           </div>
-        </div>
-      )}
+        )}
+        
+        {currentView === 'home' && (
+          <Home 
+            currentTab={currentTab}
+            categories={categories}
+            streams={streams}
+            currentCategoryId={currentCategoryId}
+            onSelectCategory={setCurrentCategoryId}
+            onItemSelect={(item) => handleSelect(item, currentTab)}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+          />
+        )}
+        
+        {currentView === 'detail' && selectedItem && (
+          <ChannelDetail 
+            item={selectedItem}
+            server={SERVER}
+            onBack={() => setCurrentView('home')}
+            onPlay={handlePlay}
+          />
+        )}
+        
+        {currentView === 'player' && selectedItem && (
+          <Player 
+            channel={selectedItem} 
+            onBack={() => setCurrentView(selectedItem.type === 'live' ? 'home' : 'detail')} 
+          />
+        )}
+      </main>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Play, Info, Search, RefreshCw } from 'lucide-react';
 
 function DragScroll({ className, children, ...props }) {
@@ -79,6 +79,13 @@ export default function Home({
   setSearchQuery
 }) {
 
+  const [visibleRows, setVisibleRows] = useState(10);
+  const observerRef = useRef(null);
+
+  useEffect(() => {
+    setVisibleRows(10);
+  }, [currentTab, currentCategoryId, searchQuery]);
+
   const heroItems = useMemo(() => {
     if (!streams || streams.length === 0) return [];
     if (searchQuery.trim() !== '') return [];
@@ -117,6 +124,21 @@ export default function Home({
       return result;
     }
   }, [currentCategoryId, categories, streams, searchQuery]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleRows((prev) => prev + 10);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    if (observerRef.current) {
+      observer.observe(observerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [rowsData]);
 
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
@@ -228,7 +250,7 @@ export default function Home({
       )}
 
       <div className="premium-rows-container">
-        {rowsData.map((row, index) => (
+        {rowsData.slice(0, visibleRows).map((row, index) => (
           <div className="premium-row" key={index}>
             <h3 className="premium-row-title">{row.title}</h3>
             <DragScroll className="premium-row-scroll">
@@ -238,7 +260,7 @@ export default function Home({
                 return (
                   <div className={`premium-card ${isVertical ? 'vertical-card' : ''}`} key={idx} onClick={() => onItemSelect(item)}>
                     <div className="premium-card-image-wrapper">
-                      <img src={imageSrc} alt={item.name} className="premium-card-img" onError={handleImageError} />
+                      <img src={imageSrc} alt={item.name} className="premium-card-img" loading="lazy" onError={handleImageError} />
                       <div className="premium-card-overlay">
                         <Play fill="white" size={32} />
                       </div>
@@ -251,6 +273,11 @@ export default function Home({
             </DragScroll>
           </div>
         ))}
+        {visibleRows < rowsData.length && (
+          <div ref={observerRef} style={{ height: '50px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div className="spinner" style={{ width: '30px', height: '30px', borderWidth: '3px' }}></div>
+          </div>
+        )}
       </div>
       
       <div style={{ height: '100px' }}></div>

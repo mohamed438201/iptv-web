@@ -3,7 +3,7 @@ import https from 'https';
 import path from 'path';
 
 const token = process.env.GH_TOKEN;
-const tag = 'v1.0.19';
+const tag = 'v1.0.24';
 const repo = 'mohamed438201/iptv-web';
 
 const getRelease = () => {

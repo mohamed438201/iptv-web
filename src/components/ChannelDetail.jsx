@@ -87,94 +87,100 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   };
 
   return (
-    <div className="detail-screen">
-      <button className="back-btn" onClick={onBack} style={{ top: '16px', right: '16px' }}>
+    <div className="detail-screen" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      {/* Background Layer */}
+      <div className="detail-bg" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: '50%', zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <img src={imageSrc} alt="bg" onError={handleImageError} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.4, filter: 'blur(30px) saturate(150%)', transform: 'scale(1.1)' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, var(--bg-main) 100%)' }}></div>
+      </div>
+
+      {/* Back Button */}
+      <button className="back-btn" onClick={onBack} style={{ top: '32px', right: '32px', zIndex: 50, position: 'absolute', background: 'rgba(0,0,0,0.5)', padding: '12px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="back-btn-icon">
           <polyline points="15 18 9 12 15 6"></polyline>
         </svg>
       </button>
 
-      <div className="detail-layout" style={{ display: 'flex', flexDirection: 'column' }}>
-        <div className="detail-hero" style={{ height: '60vh', minHeight: '400px' }}>
-          <div className="detail-bg">
-            <img src={imageSrc} alt="bg" onError={handleImageError} style={{ objectPosition: 'top' }} />
+      {/* Main Content Overlay */}
+      <div className="detail-layout" style={{ position: 'relative', zIndex: 10, flex: 1, display: 'flex', flexDirection: 'row', gap: '48px', padding: '64px', maxWidth: '1600px', width: '100%', margin: '0 auto', overflowY: 'auto' }}>
+        
+        {/* Right Column: Poster & Actions */}
+        <div className="detail-sidebar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', flexShrink: 0 }}>
+          <img 
+            src={imageSrc} 
+            alt="Cover" 
+            style={{ width: '100%', aspectRatio: '2/3', borderRadius: '16px', objectFit: 'cover', boxShadow: '0 20px 50px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}
+            onError={handleImageError} 
+          />
+          
+          {item.type === 'vod' && (
+            <button className="play-main-btn" onClick={() => onPlay(item)} style={{ width: '100%', background: 'var(--accent)', color: 'white', padding: '18px', borderRadius: '12px', fontSize: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'transform 0.2s, background 0.2s', marginTop: '0' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--accent-hover)'} onMouseOut={(e) => e.currentTarget.style.background = 'var(--accent)'} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.97)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
+              <Play fill="white" size={24} />
+              شاهد الفيلم
+            </button>
+          )}
+
+          <div className="action-buttons" style={{ display: 'flex', gap: '12px', padding: 0, margin: 0, justifyContent: 'space-between' }}>
+            <button className="action-btn" style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
+              <Bookmark size={20} /> <span style={{color: 'white', fontSize: '14px'}}>قائمتي</span>
+            </button>
+            <button className="action-btn" style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
+              <Share size={20} /> <span style={{color: 'white', fontSize: '14px'}}>مشاركة</span>
+            </button>
           </div>
-          <div className="detail-gradient"></div>
+        </div>
 
-          <div className="detail-content" style={{ paddingBottom: '24px' }}>
-            <img 
-              src={imageSrc} 
-              alt="Cover" 
-              className="detail-logo" 
-              style={{ width: '120px', height: '180px', borderRadius: '8px', objectFit: 'cover' }}
-              onError={handleImageError} 
-            />
-            <h2 className="detail-title" style={{ fontSize: '32px', marginTop: '16px' }}>{item.name}</h2>
-            <p className="detail-meta">
-              {item.type === 'vod' ? 'فيلم' : 'مسلسل'} • HD {item.rating ? `• ⭐ ${item.rating}` : ''}
-            </p>
+        {/* Left Column: Info & Episodes */}
+        <div className="detail-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <div>
+            <h1 style={{ fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: '900', marginBottom: '16px', textShadow: '0 4px 12px rgba(0,0,0,0.5)', lineHeight: 1.1, color: 'white' }}>{item.name}</h1>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '16px', color: '#ccc', fontWeight: '600' }}>
+              <span style={{ background: 'rgba(255,255,255,0.1)', padding: '6px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>{item.type === 'vod' ? 'فيلم' : 'مسلسل'}</span>
+              <span>HD</span>
+              {item.rating && <span>⭐ {item.rating}</span>}
+              {vodInfo?.releasedate && <span>📅 {vodInfo.releasedate}</span>}
+            </div>
+          </div>
 
-            {item.type === 'vod' && (
-              <button className="play-main-btn" onClick={() => onPlay(item)}>
-                <Play fill="black" size={20} />
-                شاهد الفيلم
-              </button>
+          <div style={{ fontSize: '16px', lineHeight: '1.8', color: '#e5e5e5', background: 'rgba(0,0,0,0.5)', padding: '32px', borderRadius: '16px', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+            <p style={{ marginBottom: '24px', fontSize: '18px' }}>{seriesInfo?.plot || vodInfo?.plot || item.plot || 'لا يوجد وصف متاح لهذا العرض.'}</p>
+            {item.type === 'vod' && vodInfo && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '15px', color: '#aaa', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
+                {vodInfo.director && <div><strong style={{color: 'white'}}>المخرج:</strong> {vodInfo.director}</div>}
+                {vodInfo.genre && <div><strong style={{color: 'white'}}>التصنيف:</strong> {vodInfo.genre}</div>}
+                {vodInfo.cast && <div style={{ gridColumn: '1 / -1' }}><strong style={{color: 'white'}}>الممثلون:</strong> {vodInfo.cast}</div>}
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="action-buttons">
-          <button className="action-btn">
-            <Bookmark size={20} />
-            <span>قائمتي</span>
-          </button>
-          <button className="action-btn">
-            <Share size={20} />
-            <span>مشاركة</span>
-          </button>
-        </div>
-
-        <div className="detail-description" style={{ padding: '0 24px' }}>
-          {seriesInfo?.plot || vodInfo?.plot || item.plot || 'لا يوجد وصف متاح لهذا العرض.'}
-          
-          {item.type === 'vod' && vodInfo && (
-            <div style={{ marginTop: '16px', fontSize: '14px', color: '#ccc' }}>
-              {vodInfo.director && <p style={{ marginBottom: '4px' }}><strong>المخرج:</strong> {vodInfo.director}</p>}
-              {vodInfo.cast && <p style={{ marginBottom: '4px' }}><strong>الممثلون:</strong> {vodInfo.cast}</p>}
-              {vodInfo.genre && <p style={{ marginBottom: '4px' }}><strong>التصنيف:</strong> {vodInfo.genre}</p>}
-              {vodInfo.releasedate && <p style={{ marginBottom: '4px' }}><strong>تاريخ الإصدار:</strong> {vodInfo.releasedate}</p>}
+          {item.type === 'series' && (
+            <div className="episodes-section">
+              <h3 style={{ fontSize: '28px', marginBottom: '32px', borderBottom: '2px solid rgba(255,255,255,0.1)', paddingBottom: '16px', display: 'inline-block' }}>الحلقات</h3>
+              {loading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
+                  <Loader2 className="spinner" size={48} />
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                  {episodes.map((ep, idx) => (
+                    <div key={idx} onClick={() => handlePlayEpisode(ep)} style={{ display: 'flex', gap: '16px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid rgba(255,255,255,0.05)' }} onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }} onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
+                      <div style={{ position: 'relative', width: '130px', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', background: '#111', flexShrink: 0 }}>
+                        <img src={ep.info?.movie_image || imageSrc} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={handleImageError} />
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', transition: 'background 0.2s' }}>
+                          <Play size={28} fill="white" />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        <h4 style={{ fontSize: '15px', fontWeight: 'bold', color: 'white', marginBottom: '6px', lineHeight: '1.4' }}>{ep.title}</h4>
+                        <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold' }}>الحلقة {ep.episode_num}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-
-        {item.type === 'series' && (
-          <div className="episodes-section" style={{ marginTop: '24px' }}>
-            <div className="tabs-container">
-              <div className="tab active">الحلقات</div>
-            </div>
-            
-            {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '24px' }}>
-                <Loader2 className="spinner" size={32} />
-              </div>
-            ) : (
-              <div className="episodes-list">
-                {episodes.map((ep, idx) => (
-                  <div key={idx} className="episode-item" onClick={() => handlePlayEpisode(ep)}>
-                    <div className="episode-image-container">
-                      <img src={ep.info?.movie_image || imageSrc} alt={ep.title} className="episode-image" onError={handleImageError} />
-                      <div className="episode-play-icon"><Play size={12} fill="white" /></div>
-                    </div>
-                    <div className="episode-info">
-                      <h4 className="episode-title">{ep.title}</h4>
-                      <span className="episode-duration">الحلقة {ep.episode_num}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

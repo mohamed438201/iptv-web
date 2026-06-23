@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause, Maximize, Minimize, ChevronRight, Loader2, AlertCircle, Volume2, VolumeX, RefreshCw } from 'lucide-react';
-import videojs from 'video.js';
-import 'video.js/dist/video-js.css';
+import Hls from 'hls.js';
 import './Player.css';
 
 export default function Player({ channel, onBack }) {
   const videoRef = useRef(null);
-  const playerRef = useRef(null);
+  const hlsRef = useRef(null);
   const containerRef = useRef(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -18,6 +17,9 @@ export default function Player({ channel, onBack }) {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
+  
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   
   const controlsTimeoutRef = useRef(null);
 
@@ -36,116 +38,136 @@ export default function Player({ channel, onBack }) {
     setErrorMsg(null);
     setIsPlaying(false);
 
+    const video = videoRef.current;
     let finalUrl = channel.url;
-    const isLive = channel.type === 'live';
     
-    // For Xtream Codes, we prefer .m3u8 for HLS compatibility in video.js
-    if (isLive && finalUrl.endsWith('.ts')) {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    const isMp4OrMkv = finalUrl.includes('.mp4') || finalUrl.includes('.mkv') || finalUrl.includes('.avi');
+    
+    // Minimal fallback: if it strictly ends with .ts, change to .m3u8
+    if (finalUrl.endsWith('.ts')) {
       finalUrl = finalUrl.replace(/\.ts$/, '.m3u8');
     }
 
-    // Initialize video.js if not initialized yet
-    if (!playerRef.current) {
-      const videoElement = videoRef.current;
-      if (!videoElement) return;
+    const attemptPlay = () => {
+      setIsLoading(false);
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch(e => {
+             console.error("Play interrupted:", e);
+             setIsPlaying(false);
+          });
+      }
+    };
 
-      const isIOS = window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'ios';
-
-      const player = videojs(videoElement, {
-        controls: false,
-        autoplay: true,
-        preload: 'auto',
-        fluid: false,
-        html5: {
-          vhs: {
-            overrideNative: !isIOS, // Use VHS on web/android, let iOS native handle if needed
-            enableLowInitialPlaylist: true,
-            smoothQualityChange: true,
-          },
-          nativeAudioTracks: false,
-          nativeVideoTracks: false
-        }
-      }, () => {
-        // Player is ready
-      });
-
-      player.on('play', () => setIsPlaying(true));
-      player.on('pause', () => setIsPlaying(false));
-      player.on('playing', () => setIsLoading(false));
-      player.on('waiting', () => setIsLoading(true));
-      player.on('error', () => {
+    if (isMp4OrMkv) {
+      video.src = finalUrl;
+      video.onloadedmetadata = attemptPlay;
+      video.onerror = () => {
         setIsLoading(false);
-        const error = player.error();
-        if (error) {
-          console.error('Video.js Error:', error);
-          if (error.code === 2) {
-            setErrorMsg('خطأ في الاتصال بالشبكة...');
-          } else if (error.code === 4) {
-            setErrorMsg('تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)');
-          } else {
-            setErrorMsg('تعذر تشغيل هذا البث حالياً.');
+        setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
+      };
+    } else {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          xhrSetup: (xhr, url) => {}
+        });
+        hlsRef.current = hls;
+
+        hls.loadSource(finalUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setIsLoading(false);
+          video.play().catch(e => console.log('Auto-play prevented:', e));
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                setErrorMsg('خطأ في الاتصال بالشبكة أو البث غير متاح.');
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                setErrorMsg('خطأ في تشغيل الوسائط، جاري المحاولة...');
+                hls.recoverMediaError();
+                break;
+              default:
+                hls.destroy();
+                setErrorMsg('تعذر تشغيل هذا البث حالياً.');
+                break;
+            }
           }
-        }
-      });
-      
-      // Attempt to play once ready
-      player.on('ready', () => {
-        const playPromise = player.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(() => {
-               setIsPlaying(false);
-            });
-        }
-      });
-
-      playerRef.current = player;
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = finalUrl;
+        video.addEventListener('loadedmetadata', () => {
+          setIsLoading(false);
+          video.play().catch(e => console.log('Auto-play prevented:', e));
+        });
+        video.onerror = () => {
+          setIsLoading(false);
+          setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
+        };
+      }
     }
-
-    // Update source
-    const player = playerRef.current;
     
-    let type = 'application/x-mpegURL'; // default to HLS
-    if (!isLive) {
-        if (finalUrl.endsWith('.mp4')) type = 'video/mp4';
-        else if (finalUrl.endsWith('.mkv')) type = 'video/webm'; // fallback
-    }
-
-    player.src({ src: finalUrl, type });
-    player.load();
-    player.play().catch(e => console.error("Play error:", e));
-
     return () => {
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, [channel, refreshCount]);
 
-  // Clean up player on unmount
   useEffect(() => {
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.dispose();
-        playerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (playerRef.current) {
-      playerRef.current.volume(volume);
-      playerRef.current.muted(isMuted);
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
     }
   }, [volume, isMuted]);
 
   const togglePlay = (e) => {
     if (e) e.stopPropagation();
-    if (!playerRef.current) return;
-    if (playerRef.current.paused()) {
-      playerRef.current.play();
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play();
       setIsPlaying(true);
     } else {
-      playerRef.current.pause();
+      videoRef.current.pause();
       setIsPlaying(false);
     }
+  };
+
+  const handleSeek = (e) => {
+    if (e) e.stopPropagation();
+    const time = parseFloat(e.target.value);
+    setCurrentTime(time);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+    }
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '00:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   const handleRefresh = (e) => {
@@ -181,13 +203,16 @@ export default function Player({ channel, onBack }) {
       onTouchStart={handleInteraction}
       onClick={togglePlay}
     >
-      <div data-vjs-player style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-        <video 
-          ref={videoRef} 
-          className="video-js vjs-fill video-element"
-          playsInline
-        ></video>
-      </div>
+      <video 
+        ref={videoRef} 
+        className="video-element"
+        style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'black' }}
+        playsInline
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime || 0)}
+        onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+      ></video>
 
       {isLoading && (
         <div className="error-message" style={{background: 'rgba(0,0,0,0.5)'}}>
@@ -224,39 +249,57 @@ export default function Player({ channel, onBack }) {
            )}
         </div>
 
-        <div className="bottom-bar glass-effect" style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: 'rgba(0,0,0,0.7)' }}>
-          <div className="left-controls" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button className="control-btn" onClick={togglePlay} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
-              {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="white" />}
-            </button>
-            <div className="volume-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button className="control-btn" onClick={() => setIsMuted(!isMuted)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
-                {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
+        <div className="bottom-bar glass-effect" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: 'rgba(0,0,0,0.7)', width: '100%', boxSizing: 'border-box' }}>
+          <button className="control-btn" onClick={togglePlay} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="white" />}
+          </button>
+
+          {channel.type !== 'live' ? (
+            <div className="timeline-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }} onClick={e => e.stopPropagation()}>
+              <span style={{ color: 'white', fontSize: '12px', minWidth: '40px', textAlign: 'center', userSelect: 'none' }}>{formatTime(currentTime)}</span>
               <input 
                 type="range" 
-                min="0" max="1" step="0.05" 
-                value={isMuted ? 0 : volume} 
-                onChange={(e) => {
-                  setVolume(parseFloat(e.target.value));
-                  if (isMuted) setIsMuted(false);
-                }}
-                className="volume-slider" 
+                min="0" 
+                max={duration || 100} 
+                step="1" 
+                value={currentTime} 
+                onChange={handleSeek}
+                className="timeline-slider"
+                style={{ flex: 1, height: '4px', cursor: 'pointer', accentColor: '#E50914' }}
               />
+              <span style={{ color: 'white', fontSize: '12px', minWidth: '40px', textAlign: 'center', userSelect: 'none' }}>{formatTime(duration)}</span>
             </div>
-            {channel.type === 'live' && (
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
               <div className="live-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'red', fontSize: '14px', fontWeight: 'bold' }}>
                 <div className="live-dot" style={{ width: '8px', height: '8px', background: 'red', borderRadius: '50%' }}></div>
                 مباشر
               </div>
-            )}
+            </div>
+          )}
+
+          <div className="volume-container" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+            <button className="control-btn" onClick={() => setIsMuted(!isMuted)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+            <input 
+              type="range" 
+              min="0" max="1" step="0.05" 
+              value={isMuted ? 0 : volume} 
+              onChange={(e) => {
+                setVolume(parseFloat(e.target.value));
+                if (isMuted) setIsMuted(false);
+              }}
+              className="volume-slider" 
+              style={{ width: '80px', accentColor: 'white', cursor: 'pointer' }}
+            />
           </div>
           
-          <div className="right-controls" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button className="control-btn" onClick={handleRefresh} title="تحديث البث" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
+          <div className="right-controls" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="control-btn" onClick={handleRefresh} title="تحديث البث" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               <RefreshCw size={20} />
             </button>
-            <button className="control-btn" onClick={toggleFullscreen} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
+            <button className="control-btn" onClick={toggleFullscreen} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
               {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
             </button>
           </div>
