@@ -2,9 +2,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Home from './components/Home';
 import ChannelDetail from './components/ChannelDetail';
 import Player from './components/Player';
+import Navbar from './components/Navbar';
+import AdvancedSearch from './components/AdvancedSearch';
+import Account from './components/Account';
+import Login from './components/Login';
+import Register from './components/Register';
+import Plans from './components/Plans';
+import ProfileSelection from './components/ProfileSelection';
+import AdminDashboard from './components/AdminDashboard';
+import { useAuth } from './contexts/AuthContext';
 import { Home as HomeIcon, Search, MonitorPlay, Film, Tv } from 'lucide-react';
 
 export default function App() {
+  const { user, activeProfile, logout, refreshUser } = useAuth();
+  const [authView, setAuthView] = useState('login');
+
   // Data States
   const [liveCategories, setLiveCategories] = useState([]);
   const [liveStreams, setLiveStreams] = useState([]);
@@ -21,9 +33,15 @@ export default function App() {
   // Navigation States
   const [currentView, setCurrentView] = useState('home'); // home, detail, player
   const [selectedItem, setSelectedItem] = useState(null);
+  const [playingItem, setPlayingItem] = useState(null);
   const [currentTab, setCurrentTab] = useState('live'); // live, vod, series, search
   const [currentCategoryId, setCurrentCategoryId] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const [playingEpisodes, setPlayingEpisodes] = useState([]);
+  const [playingSeriesInfo, setPlayingSeriesInfo] = useState(null);
 
   // OTA States
   const [updateMessage, setUpdateMessage] = useState(null);
@@ -34,10 +52,20 @@ export default function App() {
   // Only the specified server
   const SERVER = { host: 'http://xc.nv2.xyz:80', user: 'gamila2026', pass: 'gamila2026', proxy: '/nv2' };
 
+  const fetchedPlanRef = React.useRef(null);
+
   useEffect(() => {
     setupOTAUpdaters();
-    fetchAllData();
   }, []);
+
+  useEffect(() => {
+    if (user && user.paymentStatus === 'active') {
+      if (fetchedPlanRef.current !== user.planId) {
+        fetchedPlanRef.current = user.planId;
+        fetchAllData(user.planId);
+      }
+    }
+  }, [user?.id, user?.planId, user?.paymentStatus]);
 
   const setupOTAUpdaters = async () => {
     if (window.electronAPI) {
@@ -96,8 +124,8 @@ export default function App() {
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.setDiscordActivity) {
       const updateRPC = () => {
-        if (currentView === 'player' && selectedItem) {
-          let title = String(selectedItem.name || selectedItem.title || 'Video');
+        if (currentView === 'player' && playingItem) {
+          let title = String(playingItem.name || playingItem.title || 'Video');
           if (title.length > 100) title = title.substring(0, 100) + '...';
           window.electronAPI.setDiscordActivity(`Watching: ${title}`, 'Programmer: Mohamed Sherif');
         } else if (currentView === 'detail' && selectedItem) {
@@ -105,20 +133,21 @@ export default function App() {
           if (title.length > 100) title = title.substring(0, 100) + '...';
           window.electronAPI.setDiscordActivity(`Viewing: ${title}`, 'Programmer: Mohamed Sherif');
         } else {
-          // Send empty string to clear activity
           window.electronAPI.setDiscordActivity('', '');
         }
       };
-      
-      // Add a slight delay to prevent Discord rate limits from dropping consecutive quick updates
       const timer = setTimeout(updateRPC, 500);
       return () => clearTimeout(timer);
     }
-  }, [currentView, selectedItem]);
+  }, [currentView, selectedItem, playingItem]);
 
-  const fetchData = async (action) => {
+  const fetchData = async (action, params = {}) => {
     const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const query = `player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
+    let query = `player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
+    
+    for (const key in params) {
+      query += `&${key}=${params[key]}`;
+    }
 
     if (window.electronAPI && window.electronAPI.fetchApi) {
       const fullUrl = `${SERVER.host}/${query}`;
@@ -136,39 +165,51 @@ export default function App() {
     return await response.json();
   };
 
-  const fetchAllData = async () => {
+  const fetchAllData = async (planId) => {
     setIsLoading(true);
     setError(null);
     try {
-      setLoadingText('جاري تحميل باقات القنوات المباشرة...');
-      try {
-        const [lCats, lStrs] = await Promise.all([
-          fetchData('get_live_categories'),
-          fetchData('get_live_streams')
-        ]);
-        setLiveCategories(lCats);
-        setLiveStreams(lStrs);
-      } catch (err) { console.error("Live Fetch Error:", err); }
+      if (planId !== 'basic') {
+        setLoadingText('جاري تحميل باقات القنوات المباشرة...');
+        try {
+          const [lCats, lStrs] = await Promise.all([
+            fetchData('get_live_categories'),
+            fetchData('get_live_streams')
+          ]);
+          setLiveCategories(lCats);
+          setLiveStreams(lStrs);
+        } catch (err) { console.error("Live Fetch Error:", err); }
+      } else {
+        setLiveCategories([]);
+        setLiveStreams([]);
+      }
 
-      setLoadingText('جاري تحميل مكتبة الأفلام...');
-      try {
-        const [vodCats, vodStrs] = await Promise.all([
-          fetchData('get_vod_categories'),
-          fetchData('get_vod_streams')
-        ]);
-        setVodCategories(vodCats);
-        setVodStreams(vodStrs);
-      } catch (err) { console.error("VOD Fetch Error:", err); }
+      if (planId !== 'sports') {
+        setLoadingText('جاري تحميل مكتبة الأفلام...');
+        try {
+          const [vodCats, vodStrs] = await Promise.all([
+            fetchData('get_vod_categories'),
+            fetchData('get_vod_streams')
+          ]);
+          setVodCategories(vodCats);
+          setVodStreams(vodStrs);
+        } catch (err) { console.error("VOD Fetch Error:", err); }
 
-      setLoadingText('جاري تحميل مكتبة المسلسلات...');
-      try {
-        const [serCats, serStrs] = await Promise.all([
-          fetchData('get_series_categories'),
-          fetchData('get_series')
-        ]);
-        setSeriesCategories(serCats);
-        setSeriesStreams(serStrs);
-      } catch (err) { console.error("Series Fetch Error:", err); }
+        setLoadingText('جاري تحميل مكتبة المسلسلات...');
+        try {
+          const [serCats, serStrs] = await Promise.all([
+            fetchData('get_series_categories'),
+            fetchData('get_series')
+          ]);
+          setSeriesCategories(serCats);
+          setSeriesStreams(serStrs);
+        } catch (err) { console.error("Series Fetch Error:", err); }
+      } else {
+        setVodCategories([]);
+        setVodStreams([]);
+        setSeriesCategories([]);
+        setSeriesStreams([]);
+      }
 
       setIsLoading(false);
     } catch (err) {
@@ -179,27 +220,72 @@ export default function App() {
   };
 
   const generatePlayUrl = (streamId, type = 'live', extension = 'm3u8') => {
-    const isElectron = window.electronAPI && window.electronAPI.fetchApi;
     const path = type === 'live' ? 'live' : (type === 'movie' ? 'movie' : 'series');
     const queryPath = `/${path}/${SERVER.user}/${SERVER.pass}/${streamId}.${extension}`;
 
-    if (isElectron) {
-      // Use local HTTP proxy to bypass Chromium HSTS/CORS and Cloudflare issues
-      const baseUrl = SERVER.host.replace(/^https?:\/\//i, 'http://');
-      const targetUrl = `${baseUrl}${queryPath}`;
-      return `http://127.0.0.1:12121/${targetUrl}`;
-    }
-
-    // Web / Capacitor
+    const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
     const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
+    
+    // Always use proxy in dev to avoid CORS and HTTPS upgrade issues
+    const useProxy = isDev;
+    
     const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
     return `${baseUrl}${queryPath}`;
   };
 
-  const handleSelect = (item, type) => {
+  const handleSelect = async (item, type) => {
     if (!item) return;
+    setIsSearchOpen(false); // Close search overlay if open
     
+    // Check if it's a "Continue Watching" item
+    if (item.progress !== undefined) {
+      let playUrl = '';
+      if (item.type === 'series') {
+        playUrl = generatePlayUrl(item.id || item.stream_id, 'series', item.container_extension || 'mp4');
+        const enhancedEp = { ...item, url: playUrl };
+        
+        // Fetch series info to get episodes for the "Next Episode" button
+        let targetSeriesId = item.series_id;
+        
+        if (!targetSeriesId) {
+          // Attempt to recover series_id from seriesStreams by matching name
+          const matchName = item.series_name || item.name;
+          const recoveredSeries = seriesStreams.find(s => s.name === matchName || s.title === matchName);
+          if (recoveredSeries && recoveredSeries.series_id) {
+            targetSeriesId = recoveredSeries.series_id;
+            item.series_id = targetSeriesId; // mutate item so it works downstream
+          } else {
+            handlePlay(enhancedEp, [], { name: item.series_name, cover: item.cover || item.logo });
+            return;
+          }
+        }
+
+        try {
+          setIsLoading(true);
+          setLoadingText('جاري تحميل بيانات المسلسل...');
+          const seriesData = await fetchData('get_series_info', { series_id: targetSeriesId });
+          setIsLoading(false);
+          const eps = seriesData?.episodes ? Object.values(seriesData.episodes).flat() : [];
+          handlePlay(enhancedEp, eps, {
+            ...(seriesData?.info || {}),
+            series_id: targetSeriesId,
+            name: item.series_name || (seriesData?.info && seriesData.info.name),
+            cover: item.cover || item.logo || (seriesData?.info && seriesData.info.cover)
+          });
+        } catch (e) {
+          setIsLoading(false);
+          handlePlay(enhancedEp, [], { series_id: item.series_id, name: item.series_name, cover: item.cover || item.logo });
+        }
+        return;
+      } else {
+        playUrl = generatePlayUrl(item.stream_id, 'movie', item.container_extension || 'mp4');
+        const enhancedItem = { ...item, url: playUrl, type: type, name: item.name, logo: item.stream_icon || item.cover || '' };
+        setPlayingItem(enhancedItem);
+        setCurrentView('player');
+        return;
+      }
+    }
+
     let playUrl = '';
     let isMovieOrSeries = type === 'vod' || type === 'series';
     
@@ -207,9 +293,6 @@ export default function App() {
       playUrl = generatePlayUrl(item.stream_id, 'live', 'm3u8');
     } else if (type === 'vod') {
       playUrl = generatePlayUrl(item.stream_id, 'movie', item.container_extension || 'mp4');
-    } else if (type === 'series') {
-      // For series we usually need to fetch episodes, but for simplicity we show detail
-      // Let's defer URL generation to the detail view for series
     }
 
     const enhancedItem = {
@@ -221,14 +304,127 @@ export default function App() {
     };
 
     setSelectedItem(enhancedItem);
+    if (!isMovieOrSeries) {
+      setPlayingItem(enhancedItem);
+    }
     setCurrentView(isMovieOrSeries ? 'detail' : 'player');
   };
 
-  const handlePlay = (item) => {
+  const handlePlay = (item, episodes = [], seriesInfo = null) => {
     if (!item) return;
-    setSelectedItem(item);
+    setPlayingEpisodes(episodes);
+    setPlayingSeriesInfo(seriesInfo);
+    setPlayingItem(item);
     setCurrentView('player');
   };
+
+  const handlePlayEpisode = (ep) => {
+    if (!ep) return;
+    const playUrl = generatePlayUrl(ep.id, 'series', ep.container_extension || 'mp4');
+    const enhancedEp = {
+      ...ep,
+      url: playUrl,
+      type: 'series',
+      name: ep.title,
+      logo: ep.info?.movie_image || ep.info?.cover || ''
+    };
+    setPlayingItem(enhancedEp);
+  };
+
+  const getDaysLeft = (dateString) => {
+    if (!dateString) return null;
+    const end = new Date(dateString);
+    const now = new Date();
+    const diff = end - now;
+    if (diff <= 0) return 0;
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  if (!user) {
+    if (authView === 'login') return <Login onNavigate={setAuthView} />;
+    return <Register onNavigate={setAuthView} />;
+  }
+
+  if (user.email === 'admin@iptv.com') {
+    return <AdminDashboard />;
+  }
+
+  if (user.paymentStatus === 'banned') {
+    return (
+      <div className="premium-auth-wrapper">
+        <div className="premium-auth-bg-animated"></div>
+        <div className="premium-auth-card" style={{ textAlign: 'center', maxWidth: '480px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+            </div>
+          </div>
+          <h1 style={{ color: '#fff', fontSize: '28px', marginBottom: '16px', fontWeight: '800' }}>Account Suspended</h1>
+          <p style={{ color: '#a0a0b0', lineHeight: '1.6', fontSize: '16px', margin: '0' }}>
+            Your account has been <strong style={{ color: '#ef4444' }}>banned</strong> for violating our terms of service. 
+            If you believe this is a mistake, please contact support.
+          </p>
+          <div style={{ marginTop: '32px' }}>
+            <button className="text-btn" onClick={() => logout()} style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px' }}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const daysLeft = getDaysLeft(user.subscriptionEndDate);
+  const isExpired = user.paymentStatus === 'active' && daysLeft === 0;
+
+  if (!user.planId || isExpired || currentView === 'renew') {
+    return <Plans onCancel={currentView === 'renew' ? () => setCurrentView('account') : null} />;
+  }
+
+  if (user.paymentStatus === 'pending') {
+    return (
+      <div className="premium-auth-wrapper">
+        <div className="premium-auth-bg-animated"></div>
+        <div className="premium-auth-card" style={{ textAlign: 'center', maxWidth: '480px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(229, 9, 20, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #E50914', animation: 'spin 10s linear infinite' }}>
+              <div style={{ position: 'absolute', animation: 'spin 10s linear infinite reverse' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#E50914" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <h1 style={{ color: '#fff', fontSize: '28px', marginBottom: '16px', fontWeight: '800' }}>Pending Approval</h1>
+          <p style={{ color: '#a0a0b0', lineHeight: '1.6', fontSize: '16px', margin: '0' }}>
+            We have received your payment receipt. Your subscription is currently <strong style={{ color: '#E50914' }}>pending approval</strong> by the administrator. 
+            Please wait while we verify your transfer.
+          </p>
+          <div style={{ marginTop: '32px' }}>
+            <button className="text-btn" onClick={() => logout()} style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px' }}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+        <style>{`
+          @keyframes spin { 100% { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  if (!activeProfile) {
+    return <ProfileSelection onManageProfiles={() => {
+      if (user.profiles && user.profiles.length > 0) {
+        selectProfile(user.profiles[0].id);
+        setCurrentView('account');
+      }
+    }} />;
+  }
 
   if (isLoading) {
     return (
@@ -249,41 +445,32 @@ export default function App() {
     );
   }
 
-  const getCurrentData = () => {
-    if (currentTab === 'live') return { categories: liveCategories, streams: liveStreams };
-    if (currentTab === 'vod') return { categories: vodCategories, streams: vodStreams };
-    if (currentTab === 'series') return { categories: seriesCategories, streams: seriesStreams };
-    return { categories: [], streams: [] };
-  };
-
-  const { categories, streams } = getCurrentData();
-
   return (
     <div className="app-container">
       {currentView !== 'player' && (
-        <aside className="app-sidebar">
-          <div className="sidebar-brand" onClick={() => { setCurrentView('home'); setCurrentCategoryId('all'); setSearchQuery(''); }}>
-            MY<span>IPTV</span> <span style={{ fontSize: '12px', color: '#888', verticalAlign: 'middle', fontWeight: '500', letterSpacing: '0' }}>v2.0</span>
-          </div>
-          <nav className="sidebar-nav">
-            <button className={`sidebar-nav-item ${currentTab === 'live' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('live'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
-              <MonitorPlay size={22} />
-              <span>مباشر</span>
-            </button>
-            <button className={`sidebar-nav-item ${currentTab === 'vod' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('vod'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
-              <Film size={22} />
-              <span>أفلام</span>
-            </button>
-            <button className={`sidebar-nav-item ${currentTab === 'series' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('series'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
-              <Tv size={22} />
-              <span>مسلسلات</span>
-            </button>
-            <button className={`sidebar-nav-item ${currentTab === 'search' && currentView === 'home' ? 'active' : ''}`} onClick={() => { setCurrentTab('search'); setCurrentCategoryId('all'); setCurrentView('home'); }}>
-              <Search size={22} />
-              <span>بحث</span>
-            </button>
-          </nav>
-        </aside>
+        <Navbar 
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+          currentTab={currentTab}
+          setCurrentTab={(tab) => {
+            if (tab === 'home') refreshUser();
+            setCurrentTab(tab);
+            setCurrentCategoryId('all');
+            setCurrentView('home');
+          }}
+          onSearchClick={() => setIsSearchOpen(true)}
+          onProfileClick={() => setCurrentView('account')}
+        />
+      )}
+
+      {isSearchOpen && (
+        <AdvancedSearch 
+          liveStreams={liveStreams}
+          vodStreams={vodStreams}
+          seriesStreams={seriesStreams}
+          onClose={() => setIsSearchOpen(false)}
+          onItemSelect={handleSelect}
+        />
       )}
 
       <main className="app-main-content">
@@ -299,11 +486,18 @@ export default function App() {
         {currentView === 'home' && (
           <Home 
             currentTab={currentTab}
-            categories={categories}
-            streams={streams}
+            setCurrentTab={setCurrentTab}
+            categories={currentTab === 'live' ? liveCategories : (currentTab === 'vod' ? vodCategories : seriesCategories)}
+            streams={currentTab === 'live' ? liveStreams : (currentTab === 'vod' ? vodStreams : seriesStreams)}
+            liveCategories={liveCategories}
+            liveStreams={liveStreams}
+            vodCategories={vodCategories}
+            vodStreams={vodStreams}
+            seriesCategories={seriesCategories}
+            seriesStreams={seriesStreams}
             currentCategoryId={currentCategoryId}
             onSelectCategory={setCurrentCategoryId}
-            onItemSelect={(item) => handleSelect(item, currentTab)}
+            onItemSelect={(item, type) => handleSelect(item, type || currentTab)}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
           />
@@ -318,11 +512,25 @@ export default function App() {
           />
         )}
         
-        {currentView === 'player' && selectedItem && (
+        {currentView === 'player' && playingItem && (
           <Player 
-            channel={selectedItem} 
-            onBack={() => setCurrentView(selectedItem.type === 'live' ? 'home' : 'detail')} 
+            channel={playingItem} 
+            episodes={playingEpisodes}
+            seriesInfo={playingSeriesInfo}
+            onPlayEpisode={handlePlayEpisode}
+            onBack={() => {
+              refreshUser();
+              if (playingItem.progress !== undefined || !selectedItem) {
+                setCurrentView('home');
+              } else {
+                setCurrentView(playingItem.type === 'live' ? 'home' : 'detail');
+              }
+            }} 
           />
+        )}
+
+        {currentView === 'account' && (
+          <Account onBack={() => setCurrentView('home')} />
         )}
       </main>
     </div>

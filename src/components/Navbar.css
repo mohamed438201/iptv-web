@@ -1,0 +1,178 @@
+.netflix-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 68px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4%;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 10%, rgba(0,0,0,0));
+  z-index: 1000;
+  transition: background-color 0.4s;
+  -webkit-app-region: drag;
+}
+
+.netflix-navbar.scrolled {
+  background: linear-gradient(to bottom, rgba(20,20,20,0.95) 0%, rgba(10,10,10,0.85) 100%);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  gap: 40px;
+}
+
+.netflix-logo {
+  color: #E50914;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+  letter-spacing: -1px;
+  font-family: 'Arial Black', Impact, sans-serif;
+  transform: scaleY(1.1);
+}
+
+.navbar-links {
+  display: flex;
+  list-style: none;
+  gap: 20px;
+  align-items: center;
+  height: 68px; /* Match navbar height to make hover targets huge */
+}
+
+.navbar-links li {
+  color: #e5e5e5;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.3s;
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 100%;
+}
+
+.navbar-links li:hover {
+  color: #b3b3b3;
+}
+
+.navbar-links li.active {
+  font-weight: 700;
+  color: #fff;
+}
+
+.dropdown-arrow {
+  transition: transform 0.3s;
+}
+
+.has-dropdown:hover .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* Mega Menu */
+.mega-menu {
+  position: absolute;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-top: 2px solid #fff;
+  padding: 20px;
+  width: 700px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: megaMenuFade 0.2s ease-out forwards;
+}
+
+@keyframes megaMenuFade {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.mega-menu::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #fff;
+}
+
+.mega-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.mega-menu-item {
+  color: #b3b3b3;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s;
+  white-space: normal;
+  word-wrap: break-word;
+}
+
+.mega-menu-item:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.mega-menu-more {
+  text-align: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  margin-top: 8px;
+}
+
+.mega-menu-more:hover {
+  text-decoration: underline;
+}
+
+/* Right Navbar */
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding-right: 140px; /* Space for native window controls */
+  -webkit-app-region: no-drag;
+}
+
+.search-trigger {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.search-trigger:hover {
+  transform: scale(1.1);
+}
+
+.icon {
+  color: white;
+  cursor: pointer;
+}
+
+.profile-icon img {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+}

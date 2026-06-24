@@ -1,20 +1,41 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, session } from 'electron';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { initRPC, setActivity } from './discord-rpc.js';
-
-app.disableHardwareAcceleration();
+import { createRequire } from 'module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Backend Server with Remote DB Configuration
+process.env.DB_HOST = '135.125.196.203';
+process.env.DB_USER = 'adminmysqll';
+process.env.DB_PASS = 'XLb(226ba[<T';
+process.env.DB_NAME = 'iptv';
+process.env.PORT = '5000'; // Express server port
+
+try {
+  const customRequire = createRequire(import.meta.url);
+  const backendPath = path.join(__dirname, '../backend/server.js');
+  customRequire(backendPath);
+  console.log('Backend server started successfully within Electron');
+} catch (err) {
+  console.error('Failed to start backend server:', err);
+}
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: 'rgba(0, 0, 0, 0)',
+      symbolColor: '#ffffff',
+      height: 32
+    },
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -40,6 +61,12 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Inject VLC User-Agent globally so direct stream URLs work without the local proxy
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders['User-Agent'] = 'VLC/3.0.18 LibVLC/3.0.18';
+    callback({ cancel: false, requestHeaders: details.requestHeaders });
+  });
+
   // Local proxy server to bypass HSTS, CORS, and Cloudflare issues
   import('http').then(({ createServer }) => {
     const proxyServer = createServer(async (req, res) => {

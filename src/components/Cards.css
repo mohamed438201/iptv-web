@@ -1,0 +1,112 @@
+/* Universal Card */
+.netflix-universal-card {
+  flex: 0 0 240px;
+  scroll-snap-align: start;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #282828; /* The specific dark gray requested */
+  padding: 8px; /* Margin inside the card for the image */
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.3s;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+.netflix-universal-card:hover {
+  transform: scale(1.05);
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+}
+
+.u-card-image-wrapper {
+  width: 100%;
+  aspect-ratio: 4/5;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #111;
+}
+
+.u-card-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.u-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  flex: 1;
+}
+
+.u-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.u-card-title {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.u-card-add-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ddd;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.u-card-add-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.u-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+}
+
+.u-card-meta .match {
+  color: #46d369;
+  font-weight: 600;
+}
+
+.u-card-desc {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.u-card-genres {
+  font-size: 10px;
+  color: #666;
+  margin-top: 4px;
+}

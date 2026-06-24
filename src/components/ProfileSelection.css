@@ -1,0 +1,107 @@
+.profile-selection-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #141414;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+}
+
+.profile-selection-content {
+  text-align: center;
+}
+
+.profile-selection-content h1 {
+  font-size: 4vw;
+  font-weight: normal;
+  margin-bottom: 2em;
+}
+
+.profiles-list {
+  display: flex;
+  justify-content: center;
+  gap: 2vw;
+  flex-wrap: wrap;
+}
+
+.profile-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  width: 10vw;
+  max-width: 200px;
+  min-width: 84px;
+}
+
+.profile-avatar {
+  width: 10vw;
+  height: 10vw;
+  max-width: 200px;
+  max-height: 200px;
+  min-width: 84px;
+  min-height: 84px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 3px solid transparent;
+  transition: border-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #333;
+}
+
+.profile-item:hover .profile-avatar {
+  border-color: #fff;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-name {
+  color: #808080;
+  margin-top: 0.8em;
+  font-size: 1.3vw;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.profile-item:hover .profile-name {
+  color: #fff;
+}
+
+.add-icon {
+  font-size: 5vw;
+  color: #808080;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.profile-item:hover .add-icon {
+  background-color: #e5e5e5;
+  color: #141414;
+}
+
+.manage-profiles-btn {
+  background: transparent;
+  color: #808080;
+  border: 1px solid #808080;
+  padding: 0.5em 1.5em;
+  font-size: 1.2vw;
+  letter-spacing: 2px;
+  cursor: pointer;
+  text-transform: uppercase;
+  margin-top: 4em;
+  transition: all 0.2s;
+}
+
+.manage-profiles-btn:hover {
+  color: #fff;
+  border-color: #fff;
+}

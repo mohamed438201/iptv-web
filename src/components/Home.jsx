@@ -1,106 +1,282 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Play, Info, Search, RefreshCw } from 'lucide-react';
+import { Play, Download, ThumbsDown, ThumbsUp, Plus, VolumeX, Volume2, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
+import { UniversalCard } from './Cards';
+import { getTmdbDetails } from '../services/tmdb';
+import YouTube from 'react-youtube';
+import { useAuth } from '../contexts/AuthContext';
 
-function DragScroll({ className, children, ...props }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    let isDown = false;
-    let startX;
-    let scrollLeft;
-    let hasDragged = false;
-    const onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      isDown = true;
-      hasDragged = false;
-      startX = e.pageX - el.offsetLeft;
-      scrollLeft = el.scrollLeft;
-      el.style.cursor = 'grabbing';
-      el.style.userSelect = 'none';
-      el.style.scrollSnapType = 'none';
-    };
-    const onMouseLeave = () => {
-      if (!isDown) return;
-      isDown = false;
-      el.style.cursor = 'grab';
-      el.style.removeProperty('user-select');
-      el.style.scrollSnapType = '';
-    };
-    const onMouseUp = () => {
-      if (!isDown) return;
-      isDown = false;
-      el.style.cursor = 'grab';
-      el.style.removeProperty('user-select');
-      el.style.scrollSnapType = '';
-      if (hasDragged) {
-        const preventClick = (event) => {
-          event.stopImmediatePropagation();
-          el.removeEventListener('click', preventClick, true);
-        };
-        el.addEventListener('click', preventClick, true);
-      }
-    };
-    const onMouseMove = (e) => {
-      if (!isDown) return;
-      e.preventDefault();
-      const x = e.pageX - el.offsetLeft;
-      const walk = (x - startX) * 1.5;
-      if (Math.abs(x - startX) > 8) hasDragged = true;
-      el.scrollLeft = scrollLeft - walk;
-    };
-    el.style.cursor = 'grab';
-    el.addEventListener('mousedown', onMouseDown);
-    el.addEventListener('mouseleave', onMouseLeave);
-    el.addEventListener('mouseup', onMouseUp);
-    el.addEventListener('mousemove', onMouseMove);
-    return () => {
-      el.removeEventListener('mousedown', onMouseDown);
-      el.removeEventListener('mouseleave', onMouseLeave);
-      el.removeEventListener('mouseup', onMouseUp);
-      el.removeEventListener('mousemove', onMouseMove);
-    };
-  }, []);
+function RowScroll({ title, items, isVertical, onItemSelect, onExploreAll }) {
+  const scrollRef = useRef(null);
+  const [showLeft, setShowLeft] = useState(false);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      setShowLeft(scrollRef.current.scrollLeft > 20);
+    }
+  };
+
+  const scrollLeft = () => {
+    if (scrollRef.current) scrollRef.current.scrollBy({ left: -800, behavior: 'smooth' });
+  };
+  const scrollRight = () => {
+    if (scrollRef.current) scrollRef.current.scrollBy({ left: 800, behavior: 'smooth' });
+  };
+
+  if (!items || items.length === 0) return null;
+
   return (
-    <div ref={ref} className={className} {...props}>
-      {children}
+    <div className="netflix-row">
+      <h2 className="row-title">
+        {title} {onExploreAll && <span className="explore-all" onClick={onExploreAll}>Explore All <ChevronRight size={14}/></span>}
+      </h2>
+      <div className="row-container">
+        {showLeft && <button className="slider-arrow left" onClick={scrollLeft}><ChevronLeft size={36} /></button>}
+        <div className="row-scroll-area" ref={scrollRef} onScroll={handleScroll}>
+          {items.map((item, idx) => (
+            <UniversalCard key={idx} item={item} onClick={(clickedItem) => onItemSelect(clickedItem, clickedItem._type)} />
+          ))}
+        </div>
+        <button className="slider-arrow right" onClick={scrollRight}><ChevronRight size={36} /></button>
+      </div>
     </div>
   );
 }
 
 export default function Home({ 
   currentTab,
+  setCurrentTab,
   categories,
   streams,
+  liveCategories,
+  liveStreams,
+  vodCategories,
+  vodStreams,
+  seriesCategories,
+  seriesStreams,
   currentCategoryId,
   onSelectCategory,
   onItemSelect,
   searchQuery,
   setSearchQuery
 }) {
+  const { activeProfile, user } = useAuth();
 
   const [visibleRows, setVisibleRows] = useState(10);
+  const [heroItems, setHeroItems] = useState([]);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [ytPlayer, setYtPlayer] = useState(null);
+  const [isMuted, setIsMuted] = useState(true);
+  const touchStartRef = useRef(null);
+  const touchEndRef = useRef(null);
   const observerRef = useRef(null);
+
+  const ytOpts = useMemo(() => ({
+    width: '100%',
+    height: '140%',
+    playerVars: {
+      autoplay: 1,
+      controls: 0,
+      modestbranding: 1,
+      rel: 0,
+      showinfo: 0,
+      loop: 0,
+      disablekb: 1,
+      fs: 0,
+      mute: 1 // Start muted initially, toggleMute handles the rest without reloading
+    }
+  }), []);
+
+  const heroItem = heroItems[heroIndex] || null;
+  const tmdbData = heroItem?.tmdbData || null;
 
   useEffect(() => {
     setVisibleRows(10);
   }, [currentTab, currentCategoryId, searchQuery]);
 
-  const heroItems = useMemo(() => {
-    if (!streams || streams.length === 0) return [];
-    if (searchQuery.trim() !== '') return [];
-    const withLogos = streams.filter(s => s.stream_icon || s.cover);
-    return withLogos.length >= 5 ? withLogos.slice(0, 5) : streams.slice(0, 5);
-  }, [streams, searchQuery]);
+  useEffect(() => {
+    let taggedItems = [];
+    if (currentTab === 'home') {
+      let combined = [];
+      if (user?.planId === 'sports') {
+        combined = [...(liveStreams || []).slice(0, 30).map(l => ({...l, _type: 'live'}))];
+      } else if (user?.planId === 'basic') {
+        combined = [
+          ...(vodStreams || []).slice(0, 15).map(v => ({...v, _type: 'vod'})), 
+          ...(seriesStreams || []).slice(0, 15).map(s => ({...s, _type: 'series'}))
+        ];
+      } else {
+        combined = [
+          ...(vodStreams || []).slice(0, 15).map(v => ({...v, _type: 'vod'})), 
+          ...(seriesStreams || []).slice(0, 15).map(s => ({...s, _type: 'series'}))
+        ];
+      }
+      taggedItems = combined;
+    } else {
+      const type = currentTab === 'vod' ? 'vod' : (currentTab === 'series' ? 'series' : 'live');
+      let filteredStreams = streams || [];
+      if (currentCategoryId !== 'all') {
+        filteredStreams = filteredStreams.filter(s => String(s.category_id) === String(currentCategoryId));
+      }
+      taggedItems = filteredStreams.map(s => ({...s, _type: type}));
+    }
+    
+    if (taggedItems.length > 0) {
+      const topStreams = taggedItems.slice(0, 30);
+      const shuffled = [...topStreams].sort(() => 0.5 - Math.random()).slice(0, 20);
+      
+      let isMounted = true;
+      const fetchValidItems = async () => {
+        const validItems = [];
+        for (const item of shuffled) {
+          if (validItems.length >= 7) break; // keep up to 7 hero items
+          
+          if (item._type === 'live') {
+            validItems.push({ ...item, tmdbData: null });
+            continue;
+          }
+
+          const tmdb = await getTmdbDetails(item, item._type);
+          if (tmdb && (tmdb.backdropUrl || tmdb.trailerKey)) {
+            validItems.push({ ...item, tmdbData: tmdb });
+          }
+        }
+        if (isMounted && validItems.length > 0) {
+          setHeroItems(validItems);
+          setHeroIndex(0);
+        }
+      };
+      
+      fetchValidItems();
+      return () => { isMounted = false; };
+    }
+  }, [streams, currentTab, vodStreams, seriesStreams]);
+
+  useEffect(() => {
+    if (heroItems.length === 0) return;
+    
+    // Pause auto-slider if video is actively playing
+    if (isVideoPlaying) return;
+
+    const interval = setInterval(() => {
+      setHeroIndex(prev => (prev + 1) % heroItems.length);
+    }, 15000); // 15s interval when video is NOT playing
+    
+    return () => clearInterval(interval);
+  }, [heroItems, isVideoPlaying]);
+
+  useEffect(() => {
+    setIsVideoPlaying(false);
+    if (tmdbData?.trailerKey) {
+      const timer = setTimeout(() => {
+        setIsVideoPlaying(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [heroIndex, tmdbData]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+        if (window.scrollY > 300) {
+          ytPlayer.pauseVideo();
+        } else {
+          ytPlayer.playVideo();
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [ytPlayer]);
+
+  const toggleMute = () => {
+    if (ytPlayer && typeof ytPlayer.isMuted === 'function') {
+      try {
+        if (ytPlayer.isMuted()) {
+          ytPlayer.unMute();
+          setIsMuted(false);
+        } else {
+          ytPlayer.mute();
+          setIsMuted(true);
+        }
+      } catch (e) {
+        setIsMuted(!isMuted);
+      }
+    } else {
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const nextSlide = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setIsVideoPlaying(false);
+    setHeroIndex(prev => (prev + 1) % heroItems.length);
+  };
+
+  const prevSlide = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setIsVideoPlaying(false);
+    setHeroIndex(prev => (prev - 1 + heroItems.length) % heroItems.length);
+  };
+
+  const minSwipeDistance = 30;
+  const onPointerDown = (e) => {
+    e.target.setPointerCapture(e.pointerId);
+    touchStartRef.current = e.clientX;
+    touchEndRef.current = null;
+  };
+  const onPointerMove = (e) => {
+    if (touchStartRef.current !== null) {
+      touchEndRef.current = e.clientX;
+    }
+  };
+  const onPointerUp = (e) => {
+    if (touchStartRef.current !== null && touchEndRef.current !== null) {
+      const distance = touchStartRef.current - touchEndRef.current;
+      if (distance > minSwipeDistance) nextSlide();
+      if (distance < -minSwipeDistance) prevSlide();
+    }
+    touchStartRef.current = null;
+    touchEndRef.current = null;
+    if (e.target.hasPointerCapture && e.target.hasPointerCapture(e.pointerId)) {
+      e.target.releasePointerCapture(e.pointerId);
+    }
+  };
 
   const rowsData = useMemo(() => {
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      const filtered = streams.filter(s => s.name && s.name.toLowerCase().includes(query));
-      return [{ title: 'نتائج البحث', items: filtered }];
-    }
+    if (currentTab === 'home') {
+      const getRows = (cats, strms, type) => {
+        if (!cats || !strms) return [];
+        const grouped = {};
+        strms.forEach(s => {
+          if (!grouped[s.category_id]) grouped[s.category_id] = [];
+          grouped[s.category_id].push({ ...s, _type: type });
+        });
+        return cats.slice(0, 4).map(cat => ({
+          title: cat.category_name,
+          categoryId: cat.category_id,
+          type: type,
+          items: (grouped[cat.category_id] || []).slice(0, 20)
+        })).filter(row => row.items.length > 0);
+      };
 
-    if (currentCategoryId === 'all') {
+      let rows = [];
+      if (user?.planId === 'sports') {
+        rows = [...getRows(liveCategories, liveStreams, 'live')];
+      } else if (user?.planId === 'basic') {
+        rows = [
+          ...getRows(vodCategories, vodStreams, 'vod'),
+          ...getRows(seriesCategories, seriesStreams, 'series')
+        ];
+      } else {
+        rows = [
+          ...getRows(vodCategories, vodStreams, 'vod'),
+          ...getRows(seriesCategories, seriesStreams, 'series'),
+          ...getRows(liveCategories, liveStreams, 'live')
+        ];
+      }
+      return rows;
+    } else if (currentCategoryId === 'all') {
       const grouped = {};
       streams.forEach(s => {
         if (!grouped[s.category_id]) grouped[s.category_id] = [];
@@ -108,22 +284,15 @@ export default function Home({
       });
       return categories.map(cat => ({
         title: cat.category_name,
-        items: (grouped[cat.category_id] || []).slice(0, 15)
+        categoryId: cat.category_id,
+        type: currentTab,
+        items: (grouped[cat.category_id] || []).slice(0, 20)
       })).filter(row => row.items.length > 0);
     } else {
       const filtered = streams.filter(s => String(s.category_id) === String(currentCategoryId));
-      const chunkSize = 15;
-      const result = [];
-      const catName = categories.find(c => String(c.category_id) === String(currentCategoryId))?.category_name || '';
-      for (let i = 0; i < filtered.length; i += chunkSize) {
-        result.push({
-          title: `${catName} - جزء ${Math.floor(i / chunkSize) + 1}`,
-          items: filtered.slice(i, i + chunkSize)
-        });
-      }
-      return result;
+      return [{ title: categories.find(c => String(c.category_id) === String(currentCategoryId))?.category_name || '', items: filtered }];
     }
-  }, [currentCategoryId, categories, streams, searchQuery]);
+  }, [currentTab, currentCategoryId, categories, streams, liveCategories, liveStreams, vodCategories, vodStreams, seriesCategories, seriesStreams]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -134,153 +303,167 @@ export default function Home({
       },
       { rootMargin: '200px' }
     );
-    if (observerRef.current) {
-      observer.observe(observerRef.current);
-    }
+    if (observerRef.current) observer.observe(observerRef.current);
     return () => observer.disconnect();
   }, [rowsData]);
 
-  const handleImageError = (e) => {
-    if (e.target.dataset.error) return;
-    e.target.dataset.error = true;
-    e.target.src = 'https://placehold.co/256x384/111111/FFFFFF?text=No+Image';
-  };
-
-  const getLabel = () => {
-    if (currentTab === 'live') return 'مباشر';
-    if (currentTab === 'vod') return 'أفلام';
-    if (currentTab === 'series') return 'مسلسلات';
-    return '';
-  };
-
-  const isElectron = window.electronAPI !== undefined;
-
-  const handleCheckUpdate = () => {
-    if (isElectron) {
-      window.electronAPI.checkForUpdates();
-    }
-  };
+  const isCollections = currentTab === 'collections';
 
   return (
-    <div className="premium-home">
-      <div className="premium-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 className="premium-logo" style={{ cursor: 'pointer' }} onClick={() => { onSelectCategory('all'); setSearchQuery(''); }}>
-          MY<span style={{ color: '#E50914' }}>IPTV</span>
-        </h1>
-        {isElectron && (
-          <button 
-            onClick={handleCheckUpdate}
-            style={{ 
-              background: 'rgba(255,255,255,0.1)', 
-              border: 'none', 
-              color: 'white', 
-              padding: '8px 12px', 
-              borderRadius: '8px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            <RefreshCw size={16} />
-            تحديث
-          </button>
-        )}
-      </div>
-
-      {currentTab === 'search' && (
-        <div style={{ padding: '0 24px', marginTop: '16px', marginBottom: '16px' }}>
-          <div className="premium-search-wrapper" style={{ width: '100%', background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '16px', display: 'flex', alignItems: 'center' }}>
-            <Search className="premium-search-icon" size={20} />
-            <input 
-              type="text" 
-              className="premium-search-input" 
-              placeholder="ابحث..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-              style={{ fontSize: '16px', background: 'transparent', border: 'none', color: 'white', width: '100%', outline: 'none', marginRight: '8px' }}
-            />
-          </div>
-        </div>
-      )}
-
-      {heroItems.length > 0 && currentTab !== 'search' && (
-        <div className="premium-hero-slider">
-          {heroItems.map((item, idx) => {
-            const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
-            return (
-              <div key={idx} className="premium-hero-slide" onClick={() => onItemSelect(item)}>
-                <div className="premium-hero-ambient-glow" style={{ backgroundImage: `url(${imageSrc})` }}></div>
-                <div className="premium-hero-bg">
-                  <img src={imageSrc} alt="bg" onError={handleImageError} />
-                </div>
-                <div className="premium-hero-gradient"></div>
-                <div className="premium-hero-content">
-                  <h2 className="premium-hero-title">{item.name}</h2>
-                  <div className="premium-hero-tags">
-                    <span className="premium-tag hd">HD</span>
-                    <span className="premium-tag group">{getLabel()}</span>
-                  </div>
-                  <div className="premium-hero-buttons">
-                    <button className="premium-btn-primary" onClick={(e) => { e.stopPropagation(); onItemSelect(item); }}>
-                      <Play fill="black" size={20} />
-                      <span>{currentTab === 'live' ? 'شاهد الآن' : 'التفاصيل'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {currentTab !== 'search' && (
-        <div className="premium-groups-wrapper">
-          <DragScroll className="premium-groups-scroll">
-            <button className={`premium-pill ${currentCategoryId === 'all' ? 'active' : ''}`} onClick={() => onSelectCategory('all')}>الكل</button>
-            {categories.map((cat, idx) => (
-              <button key={idx} className={`premium-pill ${String(currentCategoryId) === String(cat.category_id) ? 'active' : ''}`} onClick={() => onSelectCategory(cat.category_id)}>
-                {cat.category_name}
-              </button>
-            ))}
-          </DragScroll>
-        </div>
-      )}
-
-      <div className="premium-rows-container">
-        {rowsData.slice(0, visibleRows).map((row, index) => (
-          <div className="premium-row" key={index}>
-            <h3 className="premium-row-title">{row.title}</h3>
-            <DragScroll className="premium-row-scroll">
-              {row.items.map((item, idx) => {
-                const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
-                const isVertical = currentTab === 'vod' || currentTab === 'series';
-                return (
-                  <div className={`premium-card ${isVertical ? 'vertical-card' : ''}`} key={idx} onClick={() => onItemSelect(item)}>
-                    <div className="premium-card-image-wrapper">
-                      <img src={imageSrc} alt={item.name} className="premium-card-img" loading="lazy" onError={handleImageError} />
-                      <div className="premium-card-overlay">
-                        <Play fill="white" size={32} />
-                      </div>
-                      {currentTab === 'live' && <div className="premium-card-badge">مباشر</div>}
-                    </div>
-                    <span className="premium-card-title">{item.name}</span>
-                  </div>
-                );
-              })}
-            </DragScroll>
-          </div>
-        ))}
-        {visibleRows < rowsData.length && (
-          <div ref={observerRef} style={{ height: '50px', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div className="spinner" style={{ width: '30px', height: '30px', borderWidth: '3px' }}></div>
-          </div>
-        )}
-      </div>
+    <div className="home-screen netflix-style">
       
-      <div style={{ height: '100px' }}></div>
+      {/* Hero Section */}
+      {heroItem && !isCollections && (
+        <div className="netflix-hero">
+          <div className="hero-bg">
+            <img 
+              key={`bg-${heroItem.stream_id}`} 
+              src={tmdbData?.backdropUrl || heroItem.stream_icon || heroItem.cover || `https://ui-avatars.com/api/?name=${encodeURIComponent(heroItem.name || 'Hero')}&background=111111&color=ffffff&size=1024`} 
+              alt="Hero" 
+              onError={(e) => { e.target.src=`https://ui-avatars.com/api/?name=${encodeURIComponent(heroItem.name || 'Hero')}&background=111111&color=ffffff&size=1024` }} 
+              className="hero-fade-in" 
+              style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', zIndex: 1 }}
+            />
+            {tmdbData?.trailerKey && (
+              <YouTube
+                videoId={tmdbData.trailerKey}
+                opts={ytOpts}
+                onReady={(e) => {
+                  setYtPlayer(e.target);
+                  if (isMuted) e.target.mute();
+                  e.target.playVideo();
+                }}
+                onStateChange={(e) => {
+                  if (e.data === YouTube.PlayerState.PLAYING) {
+                    setIsVideoPlaying(true);
+                  } else if (e.data === YouTube.PlayerState.ENDED) {
+                    setIsVideoPlaying(false);
+                    nextSlide({stopPropagation: () => {}}); 
+                  } else if (e.data === YouTube.PlayerState.PAUSED) {
+                    setIsVideoPlaying(false);
+                  }
+                }}
+                style={{ 
+                  width: '100%', height: '100%', position: 'absolute', top: '-20%', left: 0, 
+                  objectFit: 'cover', pointerEvents: 'none', zIndex: 2,
+                  opacity: isVideoPlaying ? 1 : 0, transition: 'opacity 1.5s ease-in-out'
+                }}
+                className="youtube-container"
+              />
+            )}
+          </div>
+          <div 
+            className="hero-swipe-overlay" 
+            style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5, cursor: 'grab', touchAction: 'none'}}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          ></div>
+          <div className="hero-vignette-top" style={{zIndex: 6}}></div>
+          <div className="hero-vignette-bottom" style={{zIndex: 6}}></div>
+          
+          <div key={`content-${heroItem.stream_id}`} className="hero-content-wrapper hero-fade-in" style={{zIndex: 10}}>
+            <div className="n-series-logo">
+              <span className="n-icon" style={{color: '#E50914', fontWeight: 'bold', fontSize: '24px', marginRight: '8px'}}>IPTV</span> 
+              {heroItem._type === 'vod' ? 'MOVIES' : (heroItem._type === 'series' ? 'SERIES' : 'LIVE')}
+            </div>
+            
+            <h1 style={{fontSize: '3rem', fontWeight: '800', color: '#fff', textShadow: '2px 2px 4px rgba(0,0,0,0.8)', margin: '16px 0', maxWidth: '60%'}}>
+              {heroItem.name}
+            </h1>
+            
+            <div className="hero-meta-info">
+              <span className="imdb-badge-large">IMDb</span>
+              <span className="rating">{(Math.random() * 4 + 5).toFixed(1)}</span>
+              <span className="year">{heroItem.year || heroItem.added?.substring(0,4) || '2023'}</span>
+              <span className="match">100% match</span>
+            </div>
+            
+            <p className="hero-synopsis">
+              {tmdbData?.overview || heroItem.plot || heroItem.description || ""}
+            </p>
+            
+            <div className="hero-actions">
+              <button className="btn btn-download" title="Download"><Download size={20} /></button>
+              <button className="btn btn-play" onClick={() => onItemSelect(heroItem, heroItem._type)}>
+                <Play size={24} fill="black" /> <span>Watch now</span>
+              </button>
+              <button className="btn btn-icon"><ThumbsDown size={20} /></button>
+              <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); }}><Plus size={20} /></button>
+              <button className="btn btn-icon"><ThumbsUp size={20} /></button>
+            </div>
+            
+            <div className="hero-bottom-meta">
+              <span className="genres">Animation • Action • Adventure</span>
+            </div>
+          </div>
+          
+          <div className="hero-right-actions" style={{zIndex: 10}}>
+            <button className="btn-mute" onClick={toggleMute}>
+              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+            <div className="age-rating">16+</div>
+          </div>
+        </div>
+      )}
+
+      {/* Collections Title */}
+      {isCollections && (
+        <div className="collections-header">
+          <h1>Netflix Collections</h1>
+        </div>
+      )}
+
+      {/* Rows */}
+      <div className={`netflix-rows-container ${(heroItem && !isCollections) ? 'overlap-hero' : ''}`} style={{ position: 'relative', zIndex: 20 }}>
+        {/* Render First Row */}
+        {rowsData.slice(0, 1).map((row, index) => (
+          <RowScroll 
+            key={`first-${index}`} 
+            title={row.title} 
+            items={row.items} 
+            isVertical={isCollections}
+            onItemSelect={onItemSelect} 
+            onExploreAll={() => {
+              if (row.type && setCurrentTab) setCurrentTab(row.type);
+              if (row.categoryId && onSelectCategory) onSelectCategory(row.categoryId);
+              document.querySelector('.home-screen')?.scrollTo({top: 0, behavior: 'smooth'});
+            }}
+          />
+        ))}
+
+        {/* Render Continue Watching as Second Row */}
+        {currentTab === 'home' && activeProfile?.continueWatching?.length > 0 && (
+          <RowScroll 
+            title="Continue Watching" 
+            items={activeProfile.continueWatching.map(cw => ({...cw.item, _type: cw.item.type || cw.item._type, progress: cw.progress}))} 
+            onItemSelect={onItemSelect} 
+          />
+        )}
+
+        {/* Render Rest of the Rows */}
+        {rowsData.slice(1, visibleRows).map((row, index) => (
+          <RowScroll 
+            key={`rest-${index}`} 
+            title={row.title} 
+            items={row.items} 
+            isVertical={isCollections}
+            onItemSelect={onItemSelect} 
+            onExploreAll={() => {
+              if (row.type && setCurrentTab) setCurrentTab(row.type);
+              if (row.categoryId && onSelectCategory) onSelectCategory(row.categoryId);
+              document.querySelector('.home-screen')?.scrollTo({top: 0, behavior: 'smooth'});
+            }}
+          />
+        ))}
+        
+        {visibleRows < rowsData.length && (
+          <div ref={observerRef} style={{ height: '100px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div className="spinner"></div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,17 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Bookmark, Download, Share, Loader2 } from 'lucide-react';
+import { Play, Bookmark, Share, Loader2, ArrowRight } from 'lucide-react';
+import { getTmdbDetails } from '../services/tmdb';
+import './ChannelDetail.css';
 
 export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const [seriesInfo, setSeriesInfo] = useState(null);
   const [vodInfo, setVodInfo] = useState(null);
   const [episodes, setEpisodes] = useState([]);
+  const [seasons, setSeasons] = useState({});
+  const [selectedSeason, setSelectedSeason] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [tmdbData, setTmdbData] = useState(null);
 
   useEffect(() => {
     if (item.type === 'series' && server) {
       fetchSeriesInfo();
     } else if (item.type === 'vod' && server) {
       fetchVodInfo();
+    }
+
+    if (item) {
+      getTmdbDetails(item, item.type).then(data => {
+        if (data) setTmdbData(data);
+      });
     }
   }, [item]);
 
@@ -27,13 +38,14 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
       if (res.ok) {
         const data = await res.json();
         setSeriesInfo(data.info);
-        const eps = [];
         if (data.episodes) {
-          Object.values(data.episodes).forEach(season => {
-            eps.push(...season);
-          });
+          setSeasons(data.episodes);
+          const seasonKeys = Object.keys(data.episodes);
+          if (seasonKeys.length > 0) {
+            setSelectedSeason(seasonKeys[0]);
+            setEpisodes(data.episodes[seasonKeys[0]]);
+          }
         }
-        setEpisodes(eps);
       }
     } catch (err) {
       console.error(err);
@@ -62,7 +74,13 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
 
   if (!item) return null;
 
-  const imageSrc = item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`;
+  const backdropSrc = tmdbData?.backdrop_path 
+    ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` 
+    : '';
+
+  const posterSrc = tmdbData?.poster_path 
+    ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}` 
+    : (item.stream_icon || item.cover || `https://placehold.co/256x384/111111/FFFFFF?text=No+Image`);
 
   const handleImageError = (e) => {
     if (e.target.dataset.error) return;
@@ -81,106 +99,173 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
       url: playUrl,
       type: 'series',
       name: ep.title,
-      logo: ep.info?.movie_image || imageSrc
+      logo: ep.info?.movie_image || posterSrc
     };
-    onPlay(enhancedItem);
+    onPlay(enhancedItem, episodes, { 
+      ...(seriesInfo || {}), 
+      series_id: item.series_id,
+      cover: posterSrc 
+    });
   };
 
+  const handleSeasonChange = (e) => {
+    const season = e.target.value;
+    setSelectedSeason(season);
+    setEpisodes(seasons[season] || []);
+  };
+
+  const formatDuration = (ep) => {
+    if (ep.info?.duration) {
+      const dur = String(ep.info.duration);
+      if (dur.includes(':')) {
+        const parts = dur.split(':');
+        if (parts.length === 3) {
+          const hrs = parseInt(parts[0], 10);
+          const mins = parseInt(parts[1], 10);
+          if (hrs > 0) return `${hrs}h ${mins}m`;
+          return `${mins}m`;
+        }
+      }
+      if (!isNaN(dur)) return `${dur}m`;
+      return dur;
+    }
+    return '';
+  };
+
+  const plot = tmdbData?.overview || seriesInfo?.plot || vodInfo?.plot || item.plot || 'No description available.';
+  const rating = tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : (item.rating || null);
+  const year = tmdbData?.release_date?.substring(0,4) || tmdbData?.first_air_date?.substring(0,4) || vodInfo?.releasedate || item.year || '';
+
+  const titleText = item.name || item.title || item.name;
+  const isArabicText = (text) => {
+    if (!text) return false;
+    return /[\u0600-\u06FF]/.test(text);
+  };
+  const isArabic = isArabicText(titleText);
+  const titleFont = isArabic ? "'Cairo', sans-serif" : "'Bebas Neue', sans-serif";
+  const titleSpacing = isArabic ? "normal" : "2px";
+
   return (
-    <div className="detail-screen" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', overflow: 'hidden' }}>
-      {/* Background Layer */}
-      <div className="detail-bg" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: '50%', zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        <img src={imageSrc} alt="bg" onError={handleImageError} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.4, filter: 'blur(30px) saturate(150%)', transform: 'scale(1.1)' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, var(--bg-main) 100%)' }}></div>
+    <div className="netflix-detail-screen">
+      {/* Background Hero Layer */}
+      <div className="detail-hero-bg">
+        {backdropSrc ? (
+          <img src={backdropSrc} alt="bg" className="backdrop-img" />
+        ) : (
+          <img src={posterSrc} alt="bg" className="fallback-bg-img" onError={handleImageError} />
+        )}
+        <div className="detail-vignette"></div>
       </div>
 
       {/* Back Button */}
-      <button className="back-btn" onClick={onBack} style={{ top: '32px', right: '32px', zIndex: 50, position: 'absolute', background: 'rgba(0,0,0,0.5)', padding: '12px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="back-btn-icon">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
+      <button className="netflix-back-btn" onClick={onBack}>
+        <ArrowRight size={28} />
       </button>
 
-      {/* Main Content Overlay */}
-      <div className="detail-layout" style={{ position: 'relative', zIndex: 10, flex: 1, display: 'flex', flexDirection: 'row', gap: '48px', padding: '64px', maxWidth: '1600px', width: '100%', margin: '0 auto', overflowY: 'auto' }}>
+      {/* Main Content Layout */}
+      <div className="detail-content-container">
         
-        {/* Right Column: Poster & Actions */}
-        <div className="detail-sidebar" style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '24px', flexShrink: 0 }}>
-          <img 
-            src={imageSrc} 
-            alt="Cover" 
-            style={{ width: '100%', aspectRatio: '2/3', borderRadius: '16px', objectFit: 'cover', boxShadow: '0 20px 50px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}
-            onError={handleImageError} 
-          />
-          
-          {item.type === 'vod' && (
-            <button className="play-main-btn" onClick={() => onPlay(item)} style={{ width: '100%', background: 'var(--accent)', color: 'white', padding: '18px', borderRadius: '12px', fontSize: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', transition: 'transform 0.2s, background 0.2s', marginTop: '0' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--accent-hover)'} onMouseOut={(e) => e.currentTarget.style.background = 'var(--accent)'} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.97)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-              <Play fill="white" size={24} />
-              شاهد الفيلم
-            </button>
-          )}
-
-          <div className="action-buttons" style={{ display: 'flex', gap: '12px', padding: 0, margin: 0, justifyContent: 'space-between' }}>
-            <button className="action-btn" style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
-              <Bookmark size={20} /> <span style={{color: 'white', fontSize: '14px'}}>قائمتي</span>
-            </button>
-            <button className="action-btn" style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
-              <Share size={20} /> <span style={{color: 'white', fontSize: '14px'}}>مشاركة</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Left Column: Info & Episodes */}
-        <div className="detail-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          <div>
-            <h1 style={{ fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: '900', marginBottom: '16px', textShadow: '0 4px 12px rgba(0,0,0,0.5)', lineHeight: 1.1, color: 'white' }}>{item.name}</h1>
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '16px', color: '#ccc', fontWeight: '600' }}>
-              <span style={{ background: 'rgba(255,255,255,0.1)', padding: '6px 16px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>{item.type === 'vod' ? 'فيلم' : 'مسلسل'}</span>
-              <span>HD</span>
-              {item.rating && <span>⭐ {item.rating}</span>}
-              {vodInfo?.releasedate && <span>📅 {vodInfo.releasedate}</span>}
+        {/* Top Hero Section */}
+        <div className="detail-hero-section">
+          <div className="detail-hero-info">
+            <h1 className="detail-title" style={{ fontFamily: titleFont, letterSpacing: titleSpacing, textTransform: isArabic ? 'none' : 'uppercase' }}>
+              {titleText}
+            </h1>
+            
+            <div className="detail-metadata">
+              <span className="match-score">100% Match</span>
+              {year && <span className="meta-year">{year}</span>}
+              <span className="meta-age">16+</span>
+              <span className="meta-hd">HD</span>
+              {rating && (
+                <span className="meta-rating" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ backgroundColor: '#f5c518', color: 'black', padding: '0 4px', borderRadius: '3px', fontWeight: '900', fontSize: '12px' }}>IMDb</span>
+                  {rating}
+                </span>
+              )}
             </div>
-          </div>
 
-          <div style={{ fontSize: '16px', lineHeight: '1.8', color: '#e5e5e5', background: 'rgba(0,0,0,0.5)', padding: '32px', borderRadius: '16px', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.05)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
-            <p style={{ marginBottom: '24px', fontSize: '18px' }}>{seriesInfo?.plot || vodInfo?.plot || item.plot || 'لا يوجد وصف متاح لهذا العرض.'}</p>
+            <p className="detail-synopsis">{plot}</p>
+
+            <div className="detail-hero-actions">
+              {item.type === 'vod' && (
+                <button className="btn-watch-primary" onClick={() => onPlay(item)}>
+                  <Play fill="black" size={24} /> Play Movie
+                </button>
+              )}
+              {item.type === 'series' && episodes.length > 0 && (
+                <button className="btn-watch-primary" onClick={() => handlePlayEpisode(episodes[0])}>
+                  <Play fill="black" size={24} /> Play S1:E1
+                </button>
+              )}
+              <button className="btn-action-circle" title="My List">
+                <Bookmark size={24} />
+              </button>
+              <button className="btn-action-circle" title="Share">
+                <Share size={24} />
+              </button>
+            </div>
+
             {item.type === 'vod' && vodInfo && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '15px', color: '#aaa', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '24px' }}>
-                {vodInfo.director && <div><strong style={{color: 'white'}}>المخرج:</strong> {vodInfo.director}</div>}
-                {vodInfo.genre && <div><strong style={{color: 'white'}}>التصنيف:</strong> {vodInfo.genre}</div>}
-                {vodInfo.cast && <div style={{ gridColumn: '1 / -1' }}><strong style={{color: 'white'}}>الممثلون:</strong> {vodInfo.cast}</div>}
+              <div className="detail-cast-info">
+                {vodInfo.director && <p><span className="cast-label">Director:</span> {vodInfo.director}</p>}
+                {vodInfo.genre && <p><span className="cast-label">Genre:</span> {vodInfo.genre}</p>}
+                {vodInfo.cast && <p><span className="cast-label">Cast:</span> {vodInfo.cast}</p>}
               </div>
             )}
           </div>
 
-          {item.type === 'series' && (
-            <div className="episodes-section">
-              <h3 style={{ fontSize: '28px', marginBottom: '32px', borderBottom: '2px solid rgba(255,255,255,0.1)', paddingBottom: '16px', display: 'inline-block' }}>الحلقات</h3>
-              {loading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
-                  <Loader2 className="spinner" size={48} />
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                  {episodes.map((ep, idx) => (
-                    <div key={idx} onClick={() => handlePlayEpisode(ep)} style={{ display: 'flex', gap: '16px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid rgba(255,255,255,0.05)' }} onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }} onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
-                      <div style={{ position: 'relative', width: '130px', aspectRatio: '16/9', borderRadius: '8px', overflow: 'hidden', background: '#111', flexShrink: 0 }}>
-                        <img src={ep.info?.movie_image || imageSrc} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={handleImageError} />
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', transition: 'background 0.2s' }}>
-                          <Play size={28} fill="white" />
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <h4 style={{ fontSize: '15px', fontWeight: 'bold', color: 'white', marginBottom: '6px', lineHeight: '1.4' }}>{ep.title}</h4>
-                        <span style={{ fontSize: '13px', color: 'var(--accent)', fontWeight: 'bold' }}>الحلقة {ep.episode_num}</span>
-                      </div>
-                    </div>
+          <div className="detail-hero-poster">
+            <img src={posterSrc} alt="Cover" onError={handleImageError} className="small-poster-img" />
+          </div>
+        </div>
+
+        {/* Episodes Section */}
+        {item.type === 'series' && (
+          <div className="detail-episodes-section">
+            <div className="episodes-header">
+              <h2>Episodes</h2>
+              {Object.keys(seasons).length > 1 && (
+                <select 
+                  className="season-selector"
+                  value={selectedSeason || ''}
+                  onChange={handleSeasonChange}
+                >
+                  {Object.keys(seasons).map(s => (
+                    <option key={s} value={s}>Season {s}</option>
                   ))}
-                </div>
+                </select>
               )}
             </div>
-          )}
-        </div>
+            
+            {loading ? (
+              <div className="episodes-loader">
+                <Loader2 className="spinner" size={48} />
+              </div>
+            ) : (
+              <div className="episodes-list">
+                {episodes.map((ep, idx) => (
+                  <div key={idx} className="episode-card" onClick={() => handlePlayEpisode(ep)}>
+                    <div className="episode-number">{ep.episode_num}</div>
+                    <div className="episode-thumb">
+                      <img src={ep.info?.movie_image || posterSrc} alt={ep.title} onError={handleImageError} />
+                      <div className="episode-play-overlay">
+                        <Play size={24} fill="white" />
+                      </div>
+                    </div>
+                    <div className="episode-info">
+                      <h4 style={{ fontFamily: isArabicText(ep.title) ? "'Cairo', sans-serif" : "'Inter', sans-serif" }}>{ep.title}</h4>
+                      <p>{ep.info?.plot || 'Episode ' + ep.episode_num}</p>
+                    </div>
+                    {formatDuration(ep) && (
+                      <div className="episode-duration">{formatDuration(ep)}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
