@@ -109,11 +109,16 @@ export const setPlan = async (userId, planId, paymentStatus, receiptImage = null
   if (receiptImage) updates.receipt_image = receiptImage;
   if (promoCode) updates.promo_code = promoCode;
   
-  await fetch(`${API_URL}/users/${userId}`, {
+  const res = await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates)
   });
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to set plan (Status: ${res.status})`);
+  }
   
   return getUserById(userId);
 };
@@ -185,4 +190,24 @@ export const subscribeToAllUsers = (callback) => {
 
 export const subscribeToUser = (userId, profileIds = [], callback) => {
   return () => {};
+};
+
+export const dbToggleRating = async (profileId, streamId, item, rating) => {
+  const res = await fetch(`${API_URL}/library/toggle-rating`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_id: profileId, stream_id: streamId, item, rating })
+  });
+  if (!res.ok) throw new Error('Failed to toggle rating');
+  return await res.json();
+};
+
+export const dbToggleCollection = async (profileId, streamId, item) => {
+  const res = await fetch(`${API_URL}/library/toggle-collection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_id: profileId, stream_id: streamId, item })
+  });
+  if (!res.ok) throw new Error('Failed to toggle collection');
+  return await res.json();
 };

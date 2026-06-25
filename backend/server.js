@@ -64,6 +64,17 @@ app.get('/api/users/:id', async (req, res) => {
         percentage: h.percentage,
         updatedAt: h.updated_at
       }));
+
+      // Get library
+      const [library] = await pool.query('SELECT * FROM user_library WHERE profile_id = ?', [p.id]);
+      p.library = library.map(l => ({
+        id: l.id,
+        stream_id: l.stream_id,
+        item: l.item,
+        rating: l.rating,
+        in_collection: !!l.in_collection,
+        updatedAt: l.updated_at
+      }));
     }
     
     const mappedUser = {
@@ -133,11 +144,14 @@ app.put('/api/users/:id', async (req, res) => {
       
       // Mark as active since they used a code
       updates.payment_status = 'active';
-      const newEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      updates.subscription_end_date = newEnd.toISOString();
+      updates.subscription_end_date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       
       // Increment used count
       await pool.query('UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?', [promoCode]);
+    }
+
+    if (updates.subscription_end_date) {
+      updates.subscription_end_date = new Date(updates.subscription_end_date);
     }
 
     const keys = Object.keys(updates);
@@ -170,6 +184,21 @@ app.put('/api/users/:id', async (req, res) => {
 app.post('/api/profiles', async (req, res) => {
   try {
     const { user_id, name, avatar } = req.body;
+
+    // Check user plan and current profiles count
+    const [users] = await pool.query('SELECT plan_id FROM app_users WHERE id = ?', [user_id]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+    
+    const planId = users[0].plan_id;
+    let maxProfiles = 1;
+    if (planId === 'sports') maxProfiles = 2;
+    if (planId === 'premium') maxProfiles = 4;
+
+    const [profiles] = await pool.query('SELECT COUNT(*) as count FROM profiles WHERE user_id = ?', [user_id]);
+    if (profiles[0].count >= maxProfiles) {
+      return res.status(403).json({ error: 'Maximum profile limit reached for your plan.' });
+    }
+
     await pool.query(
       'INSERT INTO profiles (id, user_id, name, avatar) VALUES (?, ?, ?, ?)',
       [uuidv4(), user_id, name, avatar]
@@ -235,6 +264,65 @@ app.post('/api/promo/verify', async (req, res) => {
     res.json({ discount: codes[0].discount_percentage });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// === Library Routes ===
+app.post('/api/library/toggle-rating', async (req, res) => {
+  try {
+    const { profile_id, stream_id, item, rating } = req.body;
+    const [rows] = await pool.query('SELECT * FROM user_library WHERE profile_id = ? AND stream_id = ?', [profile_id, stream_id]);
+    
+    if (rows.length > 0) {
+      let newRating = rating;
+      if (rows[0].rating === rating) {
+        newRating = null; // Toggle off
+      }
+      if (newRating === null && !rows[0].in_collection) {
+        await pool.query('DELETE FROM user_library WHERE id = ?', [rows[0].id]);
+        return res.json({ status: 'removed' });
+      } else {
+        await pool.query('UPDATE user_library SET rating = ? WHERE id = ?', [newRating, rows[0].id]);
+        return res.json({ status: 'updated', rating: newRating });
+      }
+    } else {
+      if (rating === null) return res.json({ status: 'none' });
+      const id = uuidv4();
+      await pool.query(
+        'INSERT INTO user_library (id, profile_id, stream_id, item, rating) VALUES (?, ?, ?, ?, ?)',
+        [id, profile_id, stream_id, JSON.stringify(item), rating]
+      );
+      return res.json({ status: 'inserted', rating });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/library/toggle-collection', async (req, res) => {
+  try {
+    const { profile_id, stream_id, item } = req.body;
+    const [rows] = await pool.query('SELECT * FROM user_library WHERE profile_id = ? AND stream_id = ?', [profile_id, stream_id]);
+    
+    if (rows.length > 0) {
+      const newCollectionStatus = !rows[0].in_collection;
+      if (!newCollectionStatus && !rows[0].rating) {
+        await pool.query('DELETE FROM user_library WHERE id = ?', [rows[0].id]);
+        return res.json({ status: 'removed', in_collection: false });
+      } else {
+        await pool.query('UPDATE user_library SET in_collection = ? WHERE id = ?', [newCollectionStatus, rows[0].id]);
+        return res.json({ status: 'updated', in_collection: newCollectionStatus });
+      }
+    } else {
+      const id = uuidv4();
+      await pool.query(
+        'INSERT INTO user_library (id, profile_id, stream_id, item, in_collection) VALUES (?, ?, ?, ?, ?)',
+        [id, profile_id, stream_id, JSON.stringify(item), true]
+      );
+      return res.json({ status: 'inserted', in_collection: true });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

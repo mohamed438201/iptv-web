@@ -47,7 +47,22 @@ async function initDB() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
     `);
 
-    // 4. promo_codes table
+    // 4. user_library table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_library (
+        id VARCHAR(36) PRIMARY KEY,
+        profile_id VARCHAR(36) NOT NULL,
+        stream_id VARCHAR(255) NOT NULL,
+        item JSON NOT NULL,
+        rating ENUM('like', 'dislike') NULL,
+        in_collection BOOLEAN DEFAULT FALSE,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_library_item (profile_id, stream_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    `);
+
+    // 5. promo_codes table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS promo_codes (
         id INT AUTO_INCREMENT PRIMARY KEY,

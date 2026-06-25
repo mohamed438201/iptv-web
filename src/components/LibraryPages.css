@@ -1,0 +1,60 @@
+/* LibraryPages.css */
+.library-page-container {
+  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  background-color: #141414;
+  color: white;
+  padding-top: 80px;
+  padding-bottom: 50px;
+}
+
+.library-header {
+  padding: 40px 4% 20px;
+  margin-bottom: 20px;
+}
+
+.library-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.45);
+}
+
+.library-header p {
+  color: #a3a3a3;
+  font-size: 1.1rem;
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 30px 20px;
+  padding: 0 4%;
+}
+
+.library-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 20px;
+  text-align: center;
+  color: #666;
+}
+
+.library-empty-icon {
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.library-empty-state h2 {
+  font-size: 1.8rem;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+.library-empty-state p {
+  font-size: 1.1rem;
+  max-width: 400px;
+}

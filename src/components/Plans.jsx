@@ -30,9 +30,19 @@ export default function Plans() {
     }
   };
 
-  const handleSubscribeClick = () => {
+  const [isSubscribing, setIsSubscribing] = useState(false);
+
+  const handleSubscribeClick = async () => {
     if (discountApplied) {
-      subscribeToPlan(selectedPlan, 'active', null, coupon.trim());
+      setIsSubscribing(true);
+      setError('');
+      try {
+        await subscribeToPlan(selectedPlan, 'active', null, coupon.trim());
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsSubscribing(false);
+      }
     } else {
       setStep('checkout');
     }
@@ -230,9 +240,9 @@ export default function Plans() {
           {discountApplied && <div style={{ color: '#4ade80', marginTop: '12px', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}><Check size={16} /> Coupon '{coupon}' applied successfully!</div>}
         </div>
 
-        <button onClick={handleSubscribeClick} className="premium-btn-primary" style={{ width: '100%', height: '64px', fontSize: '20px' }}>
-          <span>{discountApplied ? 'Activate Instantly' : 'Subscribe Now'}</span>
-          <ArrowRight size={24} />
+        <button onClick={handleSubscribeClick} disabled={isSubscribing} className="premium-btn-primary" style={{ width: '100%', height: '64px', fontSize: '20px', opacity: isSubscribing ? 0.7 : 1 }}>
+          <span>{isSubscribing ? 'Processing...' : (discountApplied ? 'Activate Instantly' : 'Subscribe Now')}</span>
+          {!isSubscribing && <ArrowRight size={24} />}
         </button>
       </div>
     </div>

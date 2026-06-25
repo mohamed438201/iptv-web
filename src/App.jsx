@@ -10,12 +10,19 @@ import Register from './components/Register';
 import Plans from './components/Plans';
 import ProfileSelection from './components/ProfileSelection';
 import AdminDashboard from './components/AdminDashboard';
-import { useAuth } from './contexts/AuthContext';
+import MyList from './components/MyList';
+import Collections from './components/Collections';
+import Downloads from './components/Downloads';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Home as HomeIcon, Search, MonitorPlay, Film, Tv } from 'lucide-react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 
 export default function App() {
   const { user, activeProfile, logout, refreshUser } = useAuth();
   const [authView, setAuthView] = useState('login');
+  
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Data States
   const [liveCategories, setLiveCategories] = useState([]);
@@ -26,7 +33,8 @@ export default function App() {
   const [seriesStreams, setSeriesStreams] = useState([]);
 
   // UI States
-  const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [isHeroReady, setIsHeroReady] = useState(false);
   const [loadingText, setLoadingText] = useState('جاري الاتصال بالسيرفر...');
   const [error, setError] = useState(null);
 
@@ -34,7 +42,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('home'); // home, detail, player
   const [selectedItem, setSelectedItem] = useState(null);
   const [playingItem, setPlayingItem] = useState(null);
-  const [currentTab, setCurrentTab] = useState('live'); // live, vod, series, search
+  const [currentTab, setCurrentTab] = useState('home'); // home, live, vod, series, search
   const [currentCategoryId, setCurrentCategoryId] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -47,6 +55,10 @@ export default function App() {
   const [updateMessage, setUpdateMessage] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(null);
 
+  // Offline Mode State
+  const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
+  const [offlineToast, setOfflineToast] = useState(false);
+
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
   
   // Only the specified server
@@ -56,16 +68,147 @@ export default function App() {
 
   useEffect(() => {
     setupOTAUpdaters();
+    
+    const handleOffline = () => setIsOfflineMode(true);
+    const handleOnline = () => {
+      setIsOfflineMode(false);
+      setOfflineToast(false);
+      if (user?.paymentStatus === 'active' && user?.planId) {
+        fetchAllData(user.planId);
+      }
+    };
+    
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    
+    if (!navigator.onLine && isNativeApp) {
+      setOfflineToast(true);
+      setIsDataLoading(false);
+      setIsHeroReady(true);
+      setCurrentView('downloads');
+      navigate('/downloads');
+      setTimeout(() => setOfflineToast(false), 5000);
+    }
+    
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
   }, []);
 
   useEffect(() => {
-    if (user && user.paymentStatus === 'active') {
+    if (user && user.paymentStatus === 'active' && !isOfflineMode) {
       if (fetchedPlanRef.current !== user.planId) {
         fetchedPlanRef.current = user.planId;
         fetchAllData(user.planId);
       }
     }
-  }, [user?.id, user?.planId, user?.paymentStatus]);
+  }, [user?.id, user?.planId, user?.paymentStatus, isOfflineMode]);
+
+  useEffect(() => {
+    if (isDataLoading) return; // Wait for data to be loaded before syncing
+    
+    const path = location.pathname;
+    
+    if (path.startsWith('/detail/')) {
+      const parts = path.split('/');
+      const type = parts[2];
+      const id = parts[3];
+      
+      let item = null;
+      if (type === 'vod') item = vodStreams.find(s => String(s.stream_id) === String(id));
+      if (type === 'series') item = seriesStreams.find(s => String(s.series_id) === String(id));
+      
+      if (item) {
+        const enhancedItem = {
+          ...item,
+          url: generatePlayUrl(id, type === 'vod' ? 'movie' : 'series', item.container_extension || 'mp4'),
+          type: type,
+          name: item.name || item.title,
+          logo: item.stream_icon || item.cover || ''
+        };
+        setSelectedItem(enhancedItem);
+        setCurrentView('detail');
+      } else {
+        navigate('/home', { replace: true });
+      }
+    } else if (path.startsWith('/play/')) {
+      const parts = path.split('/');
+      const type = parts[2];
+      const id = parts[3];
+      
+      if (location.state?.offlineItem) {
+         setPlayingItem(location.state.offlineItem);
+         setCurrentView('player');
+         return;
+      }
+
+      let item = null;
+      if (type === 'live') {
+        item = liveStreams.find(s => String(s.stream_id) === String(id));
+      } else if (type === 'vod') {
+        item = vodStreams.find(s => String(s.stream_id) === String(id));
+      } else if (type === 'series') {
+        const season = parts[4];
+        const episodeNum = parts[5];
+        // Fetch series info asynchronously if needed
+        fetchData('get_series_info', { series_id: id }).then(seriesData => {
+           const eps = seriesData?.episodes ? Object.values(seriesData.episodes).flat() : [];
+           const ep = eps.find(e => String(e.season) === String(season) && String(e.episode_num) === String(episodeNum));
+           if (ep) {
+              const playUrl = generatePlayUrl(ep.id, 'series', ep.container_extension || 'mp4');
+              const enhancedEp = {
+                ...ep,
+                url: playUrl,
+                type: 'series',
+                name: ep.title,
+                logo: ep.info?.movie_image || ep.info?.cover || '',
+                progress: location.state?.progress
+              };
+              setPlayingEpisodes(eps);
+              setPlayingSeriesInfo({
+                 ...(seriesData?.info || {}),
+                 series_id: id
+              });
+              setPlayingItem(enhancedEp);
+              setCurrentView('player');
+           }
+        }).catch(() => {
+           navigate('/home');
+        });
+        return; // async handles it
+      }
+      
+      if (item && type !== 'series') {
+        const enhancedItem = {
+          ...item,
+          url: generatePlayUrl(id, type === 'live' ? 'live' : 'movie', type === 'live' ? 'm3u8' : (item.container_extension || 'mp4')),
+          type: type,
+          name: item.name,
+          logo: item.stream_icon || item.cover || '',
+          progress: location.state?.progress
+        };
+        setPlayingItem(enhancedItem);
+        setCurrentView('player');
+      }
+    } else if (path.startsWith('/account')) {
+      setCurrentView('account');
+    } else if (path.startsWith('/mylist')) {
+      setCurrentView('mylist');
+    } else if (path.startsWith('/collections')) {
+      setCurrentView('collections');
+    } else if (path.startsWith('/downloads')) {
+      setCurrentView('downloads');
+    } else {
+      setCurrentView('home');
+      if (path.startsWith('/home/')) {
+         const tab = path.split('/')[2];
+         if (['home', 'live', 'vod', 'series'].includes(tab)) {
+            setCurrentTab(tab);
+         }
+      }
+    }
+  }, [location.pathname, isDataLoading, liveStreams, vodStreams, seriesStreams]);
 
   const setupOTAUpdaters = async () => {
     if (window.electronAPI) {
@@ -166,7 +309,8 @@ export default function App() {
   };
 
   const fetchAllData = async (planId) => {
-    setIsLoading(true);
+    setIsDataLoading(true);
+    setIsHeroReady(false);
     setError(null);
     try {
       if (planId !== 'basic') {
@@ -211,11 +355,11 @@ export default function App() {
         setSeriesStreams([]);
       }
 
-      setIsLoading(false);
+      setIsDataLoading(false);
     } catch (err) {
       console.error("Fetch Data Error:", err);
       setError('تعذر الاتصال بالسيرفر أو جلب البيانات. تأكد من اتصالك بالانترنت.');
-      setIsLoading(false);
+      setIsDataLoading(false);
     }
   };
 
@@ -237,98 +381,55 @@ export default function App() {
     if (!item) return;
     setIsSearchOpen(false); // Close search overlay if open
     
+    // Check if it's an offline item
+    if (item.isOffline) {
+      setPlayingItem(item);
+      setCurrentView('player');
+      navigate(`/play/${item.type || 'vod'}/${item.id}`, { state: { offlineItem: item } });
+      return;
+    }
+
     // Check if it's a "Continue Watching" item
     if (item.progress !== undefined) {
-      let playUrl = '';
       if (item.type === 'series') {
-        playUrl = generatePlayUrl(item.id || item.stream_id, 'series', item.container_extension || 'mp4');
-        const enhancedEp = { ...item, url: playUrl };
-        
-        // Fetch series info to get episodes for the "Next Episode" button
-        let targetSeriesId = item.series_id;
-        
-        if (!targetSeriesId) {
-          // Attempt to recover series_id from seriesStreams by matching name
-          const matchName = item.series_name || item.name;
-          const recoveredSeries = seriesStreams.find(s => s.name === matchName || s.title === matchName);
-          if (recoveredSeries && recoveredSeries.series_id) {
-            targetSeriesId = recoveredSeries.series_id;
-            item.series_id = targetSeriesId; // mutate item so it works downstream
-          } else {
-            handlePlay(enhancedEp, [], { name: item.series_name, cover: item.cover || item.logo });
-            return;
-          }
-        }
-
-        try {
-          setIsLoading(true);
-          setLoadingText('جاري تحميل بيانات المسلسل...');
-          const seriesData = await fetchData('get_series_info', { series_id: targetSeriesId });
-          setIsLoading(false);
-          const eps = seriesData?.episodes ? Object.values(seriesData.episodes).flat() : [];
-          handlePlay(enhancedEp, eps, {
-            ...(seriesData?.info || {}),
-            series_id: targetSeriesId,
-            name: item.series_name || (seriesData?.info && seriesData.info.name),
-            cover: item.cover || item.logo || (seriesData?.info && seriesData.info.cover)
-          });
-        } catch (e) {
-          setIsLoading(false);
-          handlePlay(enhancedEp, [], { series_id: item.series_id, name: item.series_name, cover: item.cover || item.logo });
-        }
+        const seriesId = item.series_id || item.id || item.stream_id;
+        navigate(`/play/series/${seriesId}/${item.season}/${item.episode_num}`, { state: { progress: item.progress } });
         return;
       } else {
-        playUrl = generatePlayUrl(item.stream_id, 'movie', item.container_extension || 'mp4');
-        const enhancedItem = { ...item, url: playUrl, type: type, name: item.name, logo: item.stream_icon || item.cover || '' };
-        setPlayingItem(enhancedItem);
-        setCurrentView('player');
+        const id = item.stream_id || item.id;
+        navigate(`/play/vod/${id}`, { state: { progress: item.progress } });
         return;
       }
     }
 
-    let playUrl = '';
     let isMovieOrSeries = type === 'vod' || type === 'series';
+    const id = item.stream_id || item.series_id || item.id;
     
-    if (type === 'live') {
-      playUrl = generatePlayUrl(item.stream_id, 'live', 'm3u8');
-    } else if (type === 'vod') {
-      playUrl = generatePlayUrl(item.stream_id, 'movie', item.container_extension || 'mp4');
+    if (isMovieOrSeries) {
+      navigate(`/detail/${type}/${id}`);
+    } else {
+      navigate(`/play/${type}/${id}`);
     }
-
-    const enhancedItem = {
-      ...item,
-      url: playUrl,
-      type: type,
-      name: item.name,
-      logo: item.stream_icon || item.cover || '',
-    };
-
-    setSelectedItem(enhancedItem);
-    if (!isMovieOrSeries) {
-      setPlayingItem(enhancedItem);
-    }
-    setCurrentView(isMovieOrSeries ? 'detail' : 'player');
   };
 
   const handlePlay = (item, episodes = [], seriesInfo = null) => {
     if (!item) return;
     setPlayingEpisodes(episodes);
     setPlayingSeriesInfo(seriesInfo);
-    setPlayingItem(item);
-    setCurrentView('player');
+    
+    // For series, play the specific episode selected
+    if (item.type === 'series') {
+      navigate(`/play/series/${item.series_id || seriesInfo?.series_id || item.id}/${item.season}/${item.episode_num}`);
+      return;
+    }
+    
+    const id = item.stream_id || item.id;
+    navigate(`/play/${item.type || 'vod'}/${id}`);
   };
 
   const handlePlayEpisode = (ep) => {
     if (!ep) return;
-    const playUrl = generatePlayUrl(ep.id, 'series', ep.container_extension || 'mp4');
-    const enhancedEp = {
-      ...ep,
-      url: playUrl,
-      type: 'series',
-      name: ep.title,
-      logo: ep.info?.movie_image || ep.info?.cover || ''
-    };
-    setPlayingItem(enhancedEp);
+    navigate(`/play/series/${playingSeriesInfo?.series_id || selectedItem?.series_id}/${ep.season}/${ep.episode_num}`, { replace: true });
   };
 
   const getDaysLeft = (dateString) => {
@@ -340,16 +441,16 @@ export default function App() {
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 
-  if (!user) {
+  if (!user && !isOfflineMode) {
     if (authView === 'login') return <Login onNavigate={setAuthView} />;
     return <Register onNavigate={setAuthView} />;
   }
 
-  if (user.email === 'admin@iptv.com') {
+  if (user && user.email === 'admin@iptv.com' && !isOfflineMode) {
     return <AdminDashboard />;
   }
 
-  if (user.paymentStatus === 'banned') {
+  if (user && user.paymentStatus === 'banned' && !isOfflineMode) {
     return (
       <div className="premium-auth-wrapper">
         <div className="premium-auth-bg-animated"></div>
@@ -377,14 +478,14 @@ export default function App() {
     );
   }
 
-  const daysLeft = getDaysLeft(user.subscriptionEndDate);
-  const isExpired = user.paymentStatus === 'active' && daysLeft === 0;
+  const daysLeft = user ? getDaysLeft(user.subscriptionEndDate) : null;
+  const isExpired = user && user.paymentStatus === 'active' && daysLeft === 0;
 
-  if (!user.planId || isExpired || currentView === 'renew') {
+  if (!isOfflineMode && user && (!user.planId || isExpired || currentView === 'renew')) {
     return <Plans onCancel={currentView === 'renew' ? () => setCurrentView('account') : null} />;
   }
 
-  if (user.paymentStatus === 'pending') {
+  if (user && user.paymentStatus === 'pending' && !isOfflineMode) {
     return (
       <div className="premium-auth-wrapper">
         <div className="premium-auth-bg-animated"></div>
@@ -417,7 +518,7 @@ export default function App() {
     );
   }
 
-  if (!activeProfile) {
+  if (!activeProfile && !isOfflineMode) {
     return <ProfileSelection onManageProfiles={() => {
       if (user.profiles && user.profiles.length > 0) {
         selectProfile(user.profiles[0].id);
@@ -426,44 +527,56 @@ export default function App() {
     }} />;
   }
 
-  if (isLoading) {
-    return (
-      <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', direction: 'rtl' }}>
-        <div className="spinner"></div>
-        <p style={{ marginTop: '24px', color: '#fff', fontSize: '18px', fontWeight: 'bold' }}>{loadingText}</p>
-      </div>
-    );
-  }
-
-  if (error) {
+  if (error && !isOfflineMode) {
     return (
       <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center', padding: '24px', textAlign: 'center', direction: 'rtl' }}>
         <h2 style={{ color: '#E50914', marginBottom: '16px' }}>حدث خطأ</h2>
         <p>{error}</p>
-        <button onClick={fetchAllData} className="retry-btn" style={{ marginTop: '24px' }}>إعادة المحاولة</button>
+        <button onClick={() => fetchAllData(user?.planId)} className="retry-btn" style={{ marginTop: '24px' }}>إعادة المحاولة</button>
       </div>
     );
   }
 
   return (
-    <div className="app-container">
-      {currentView !== 'player' && (
+    <>
+      {offlineToast && (
+        <div style={{ position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', background: '#ff9500', color: 'white', padding: '12px 24px', borderRadius: '8px', zIndex: 10000, fontWeight: 'bold', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+          No internet connection. You can watch your downloaded content.
+        </div>
+      )}
+
+      {(!isOfflineMode && (isDataLoading || !isHeroReady)) && (
+        <div className="cinematic-loader-overlay">
+          <div className="cinematic-loader-bg"></div>
+          <div className="cinematic-loader-content">
+            <h1 style={{ color: '#E50914', fontSize: '40px', fontWeight: 'bold', marginBottom: '30px', letterSpacing: '4px', textTransform: 'uppercase' }}>
+              IPTV PREMIUM
+            </h1>
+            <div className="netflix-spinner"></div>
+            <p className="cinematic-text">Loading your experience...</p>
+          </div>
+        </div>
+      )}
+      
+      <div className="app-container" style={{ display: (!isOfflineMode && (isDataLoading || !isHeroReady)) ? 'none' : 'flex' }}>
+        {currentView !== 'player' && (
         <Navbar 
           currentView={currentView}
           setCurrentView={setCurrentView}
           currentTab={currentTab}
           setCurrentTab={(tab) => {
-            if (tab === 'home') refreshUser();
-            setCurrentTab(tab);
-            setCurrentCategoryId('all');
-            setCurrentView('home');
+            if (tab === 'home' && !isOfflineMode) refreshUser();
+            navigate(`/home/${tab}`);
           }}
           onSearchClick={() => setIsSearchOpen(true)}
-          onProfileClick={() => setCurrentView('account')}
+          onProfileClick={() => navigate('/account')}
+          onMyListClick={() => navigate('/mylist')}
+          onCollectionsClick={() => navigate('/collections')}
+          onDownloadsClick={() => navigate('/downloads')}
         />
       )}
 
-      {isSearchOpen && (
+      {isSearchOpen && !isOfflineMode && (
         <AdvancedSearch 
           liveStreams={liveStreams}
           vodStreams={vodStreams}
@@ -474,7 +587,7 @@ export default function App() {
       )}
 
       <main className="app-main-content">
-        {updateMessage && (
+        {updateMessage && !isOfflineMode && (
           <div className="update-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
               {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
@@ -483,7 +596,7 @@ export default function App() {
           </div>
         )}
         
-        {currentView === 'home' && (
+        {currentView === 'home' && !isOfflineMode && (
           <Home 
             currentTab={currentTab}
             setCurrentTab={setCurrentTab}
@@ -500,6 +613,7 @@ export default function App() {
             onItemSelect={(item, type) => handleSelect(item, type || currentTab)}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            onHeroReady={() => setIsHeroReady(true)}
           />
         )}
         
@@ -507,7 +621,7 @@ export default function App() {
           <ChannelDetail 
             item={selectedItem}
             server={SERVER}
-            onBack={() => setCurrentView('home')}
+            onBack={() => navigate('/home')}
             onPlay={handlePlay}
           />
         )}
@@ -520,19 +634,28 @@ export default function App() {
             onPlayEpisode={handlePlayEpisode}
             onBack={() => {
               refreshUser();
-              if (playingItem.progress !== undefined || !selectedItem) {
-                setCurrentView('home');
-              } else {
-                setCurrentView(playingItem.type === 'live' ? 'home' : 'detail');
-              }
+              navigate(-1);
             }} 
           />
         )}
 
         {currentView === 'account' && (
-          <Account onBack={() => setCurrentView('home')} />
+          <Account onBack={() => navigate('/home')} />
+        )}
+        
+        {currentView === 'mylist' && (
+          <MyList onItemSelect={(item, type) => handleSelect(item, type)} />
+        )}
+        
+        {currentView === 'collections' && (
+          <Collections onItemSelect={(item, type) => handleSelect(item, type)} />
+        )}
+        
+        {currentView === 'downloads' && (
+          <Downloads onItemSelect={(item, type) => handleSelect(item, type)} />
         )}
       </main>
     </div>
+    </>
   );
 }

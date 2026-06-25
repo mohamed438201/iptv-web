@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Play, Download, ThumbsDown, ThumbsUp, Plus, VolumeX, Volume2, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
+import { Play, Download, ThumbsDown, ThumbsUp, Plus, Check, VolumeX, Volume2, ChevronRight, ChevronLeft, Clock } from 'lucide-react';
 import { UniversalCard } from './Cards';
 import { getTmdbDetails } from '../services/tmdb';
 import YouTube from 'react-youtube';
@@ -57,9 +57,10 @@ export default function Home({
   onSelectCategory,
   onItemSelect,
   searchQuery,
-  setSearchQuery
+  setSearchQuery,
+  onHeroReady
 }) {
-  const { activeProfile, user } = useAuth();
+  const { activeProfile, user, toggleRating, toggleCollection } = useAuth();
 
   const [visibleRows, setVisibleRows] = useState(10);
   const [heroItems, setHeroItems] = useState([]);
@@ -145,10 +146,15 @@ export default function Home({
           setHeroItems(validItems);
           setHeroIndex(0);
         }
+        if (isMounted && onHeroReady) {
+          onHeroReady();
+        }
       };
       
       fetchValidItems();
       return () => { isMounted = false; };
+    } else {
+      if (onHeroReady) onHeroReady();
     }
   }, [streams, currentTab, vodStreams, seriesStreams]);
 
@@ -343,6 +349,13 @@ export default function Home({
                     setIsVideoPlaying(false);
                   }
                 }}
+                onError={(e) => {
+                  console.warn("YouTube Player Error:", e.data);
+                  setIsVideoPlaying(false);
+                  if (heroItem && heroItem.tmdbData) {
+                    heroItem.tmdbData.trailerKey = null;
+                  }
+                }}
                 style={{ 
                   width: '100%', height: '100%', position: 'absolute', top: '-20%', left: 0, 
                   objectFit: 'cover', pointerEvents: 'none', zIndex: 2,
@@ -354,7 +367,7 @@ export default function Home({
           </div>
           <div 
             className="hero-swipe-overlay" 
-            style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5, cursor: 'grab', touchAction: 'none'}}
+            style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5, cursor: 'grab', touchAction: 'pan-y'}}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -375,7 +388,7 @@ export default function Home({
             
             <div className="hero-meta-info">
               <span className="imdb-badge-large">IMDb</span>
-              <span className="rating">{(Math.random() * 4 + 5).toFixed(1)}</span>
+              <span className="rating">{heroItem.rating || '9.5'}</span>
               <span className="year">{heroItem.year || heroItem.added?.substring(0,4) || '2023'}</span>
               <span className="match">100% match</span>
             </div>
@@ -389,9 +402,34 @@ export default function Home({
               <button className="btn btn-play" onClick={() => onItemSelect(heroItem, heroItem._type)}>
                 <Play size={24} fill="black" /> <span>Watch now</span>
               </button>
-              <button className="btn btn-icon"><ThumbsDown size={20} /></button>
-              <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); }}><Plus size={20} /></button>
-              <button className="btn btn-icon"><ThumbsUp size={20} /></button>
+              
+              {(() => {
+                const streamId = String(heroItem?.series_id || heroItem?.stream_id || heroItem?.id);
+                const libItem = activeProfile?.library?.find(l => l.stream_id === streamId) || {};
+                
+                return (
+                  <>
+                    <button 
+                      className={`btn btn-icon ${libItem.rating === 'dislike' ? 'active-rating' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); toggleRating(streamId, heroItem, 'dislike'); }}
+                      style={{ color: libItem.rating === 'dislike' ? '#fff' : undefined }}
+                    ><ThumbsDown size={20} fill={libItem.rating === 'dislike' ? 'white' : 'none'} /></button>
+                    
+                    <button 
+                      className="btn btn-icon" 
+                      onClick={(e) => { e.stopPropagation(); toggleCollection(streamId, heroItem); }}
+                    >
+                      {libItem.in_collection ? <Check size={20} className="icon-anim-check" /> : <Plus size={20} className="icon-anim-plus" />}
+                    </button>
+                    
+                    <button 
+                      className={`btn btn-icon ${libItem.rating === 'like' ? 'active-rating' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); toggleRating(streamId, heroItem, 'like'); }}
+                      style={{ color: libItem.rating === 'like' ? '#fff' : undefined }}
+                    ><ThumbsUp size={20} fill={libItem.rating === 'like' ? 'white' : 'none'} /></button>
+                  </>
+                );
+              })()}
             </div>
             
             <div className="hero-bottom-meta">

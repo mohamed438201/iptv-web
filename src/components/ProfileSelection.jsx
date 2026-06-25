@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Edit2, Trash2 } from 'lucide-react';
+import { PLANS } from '../services/db';
 import './ProfileSelection.css';
 
 export default function ProfileSelection() {
@@ -10,6 +11,7 @@ export default function ProfileSelection() {
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileAvatar, setNewProfileAvatar] = useState('https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg');
   const [error, setError] = useState('');
+  const [profileToDelete, setProfileToDelete] = useState(null);
 
   const AVATARS = [
     "https://wallpapers.com/images/hd/netflix-profile-pictures-1000-x-1000-qo9h82134t9nv0j0.jpg",
@@ -19,6 +21,8 @@ export default function ProfileSelection() {
   ];
 
   if (!user) return null;
+
+  const maxProfiles = PLANS[user.planId]?.maxProfiles || 1;
 
   const handleAddProfile = async () => {
     if (!newProfileName.trim()) {
@@ -53,15 +57,22 @@ export default function ProfileSelection() {
   };
 
   const handleDeleteProfile = async () => {
-    if(window.confirm('Are you sure you want to delete this profile?')) {
-      try {
-        await removeProfile(editingProfileId);
+    setProfileToDelete(editingProfileId);
+  };
+
+  const confirmDeleteProfile = async () => {
+    if (!profileToDelete) return;
+    try {
+      await removeProfile(profileToDelete);
+      if (editingProfileId === profileToDelete) {
         setEditingProfileId(null);
         setNewProfileName('');
-        setError('');
-      } catch (err) {
-        setError(err.message || 'Failed to delete profile');
       }
+      setProfileToDelete(null);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Failed to delete profile');
+      setProfileToDelete(null);
     }
   };
 
@@ -98,16 +109,18 @@ export default function ProfileSelection() {
                 </button>
               </div>
             ))}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div className="profile-item add-profile" onClick={() => setIsAdding(true)} style={{ marginBottom: '8px' }}>
-                <div className="profile-avatar add-icon">
-                  <span>+</span>
+            {user.profiles.length < maxProfiles && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div className="profile-item add-profile" onClick={() => setIsAdding(true)} style={{ marginBottom: '8px' }}>
+                  <div className="profile-avatar add-icon">
+                    <span>+</span>
+                  </div>
+                  <span className="profile-name">Add Profile</span>
                 </div>
-                <span className="profile-name">Add Profile</span>
+                {/* Invisible spacer to align with edit buttons */}
+                <div style={{ height: '24px' }}></div>
               </div>
-              {/* Invisible spacer to align with edit buttons */}
-              <div style={{ height: '24px' }}></div>
-            </div>
+            )}
           </div>
         )}
 
@@ -167,6 +180,19 @@ export default function ProfileSelection() {
           </div>
         )}
       </div>
+
+      {profileToDelete && (
+        <div className="premium-modal-overlay">
+          <div className="premium-modal">
+            <h3 className="modal-title">Delete Profile</h3>
+            <p className="modal-message">Are you sure you want to delete this profile? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button className="premium-btn secondary" onClick={() => setProfileToDelete(null)}>Cancel</button>
+              <button className="premium-btn danger" onClick={confirmDeleteProfile}>Delete Profile</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

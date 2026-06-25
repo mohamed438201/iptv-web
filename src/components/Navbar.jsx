@@ -11,11 +11,15 @@ export default function Navbar({
   vodCategories,
   seriesCategories,
   setCurrentCategoryId,
-  onProfileClick
+  onProfileClick,
+  currentView,
+  onMyListClick,
+  onCollectionsClick,
+  onDownloadsClick
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState(null);
-  const { activeProfile, user } = useAuth();
+  const { activeProfile, user, selectProfile, clearActiveProfile } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -83,7 +87,9 @@ export default function Navbar({
   return (
     <nav className={`netflix-navbar ${isScrolled ? 'scrolled' : ''}`}>
       <div className="navbar-left">
-        <h1 className="netflix-logo" onClick={() => handleCategorySelect('home', 'all')}>IPTV PREMIUM</h1>
+        <h1 onClick={() => handleCategorySelect('home', 'all')} style={{ color: '#E50914', fontSize: '22px', fontWeight: '900', cursor: 'pointer', fontFamily: 'Arial Black, Impact, sans-serif' }}>
+          IPTV PREMIUM
+        </h1>
         <ul className="navbar-links">
           <li className={currentTab === 'home' ? 'active' : ''} onClick={() => handleCategorySelect('home', 'all')}>Home</li>
           
@@ -123,8 +129,9 @@ export default function Navbar({
             </li>
           )}
           
-          <li>My list</li>
-          <li className={currentTab === 'collections' ? 'active' : ''} onClick={() => handleCategorySelect('collections', 'all')}>Collections</li>
+          <li className={currentView === 'mylist' ? 'active' : ''} onClick={onMyListClick}>My list</li>
+          <li className={currentView === 'collections' ? 'active' : ''} onClick={onCollectionsClick}>Collections</li>
+          <li className={currentView === 'downloads' ? 'active' : ''} onClick={onDownloadsClick}>Downloads</li>
         </ul>
       </div>
       <div className="navbar-right">
@@ -132,6 +139,7 @@ export default function Navbar({
           <Search size={24} className="icon" style={{color: '#fff', strokeWidth: 2}}/>
         </div>
         <Bell size={24} className="icon" style={{color: '#fff', strokeWidth: 2}}/>
+        
         <div className="profile-icon" onClick={onProfileClick} style={{cursor: 'pointer'}}>
           <img src={activeProfile?.avatar || "https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png"} alt="Profile" style={{borderRadius: '4px'}}/>
         </div>

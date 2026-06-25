@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Bookmark, Share, Loader2, ArrowRight } from 'lucide-react';
+import { Play, Bookmark, Share, Loader2, ArrowRight, ThumbsUp, ThumbsDown, Plus, Check, Download } from 'lucide-react';
 import { getTmdbDetails } from '../services/tmdb';
+import { useAuth } from '../contexts/AuthContext';
+import { useDownloads } from '../contexts/DownloadsContext';
 import './ChannelDetail.css';
 
 export default function ChannelDetail({ item, server, onBack, onPlay }) {
+  const { activeProfile, toggleRating, toggleCollection } = useAuth();
+  const { getDownloadState, startDownload, pauseDownload } = useDownloads();
   const [seriesInfo, setSeriesInfo] = useState(null);
   const [vodInfo, setVodInfo] = useState(null);
   const [episodes, setEpisodes] = useState([]);
@@ -11,6 +15,14 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const [selectedSeason, setSelectedSeason] = useState(null);
   const [loading, setLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState(null);
+  const [toast, setToast] = useState({ show: false, message: '', isError: false });
+
+  const showToast = (message, isError = false) => {
+    setToast({ show: true, message, isError });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 3000);
+  };
 
   useEffect(() => {
     if (item.type === 'series' && server) {
@@ -108,6 +120,101 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
     });
   };
 
+  const handleDownloadVod = () => {
+    if (typeof window === 'undefined' || !window.electronAPI) {
+      return showToast('Downloads are only supported in the desktop app.', true);
+    }
+    
+    const streamId = String(item.stream_id || item.id);
+    const dlState = getDownloadState(streamId);
+    
+    if (dlState?.status === 'downloading') {
+      pauseDownload(streamId);
+      return;
+    }
+    if (dlState?.status === 'paused') {
+      startDownload(dlState);
+      return;
+    }
+    if (dlState?.status === 'completed') {
+      return;
+    }
+
+    let ext = item.container_extension || 'mp4';
+    const baseUrl = server.host;
+    const downloadUrl = `${baseUrl}/movie/${server.user}/${server.pass}/${item.stream_id}.${ext}`;
+    
+    startDownload({
+      ...item,
+      url: downloadUrl,
+      title: titleText,
+      poster: posterSrc
+    });
+    showToast('Download started! Check the Downloads page.');
+  };
+
+  const handleDownloadEpisode = (ep) => {
+    if (typeof window === 'undefined' || !window.electronAPI) {
+      return showToast('Downloads are only supported in the desktop app.', true);
+    }
+    
+    const streamId = String(ep.id);
+    const dlState = getDownloadState(streamId);
+    
+    if (dlState?.status === 'downloading') {
+      pauseDownload(streamId);
+      return;
+    }
+    if (dlState?.status === 'paused') {
+      startDownload(dlState);
+      return;
+    }
+    if (dlState?.status === 'completed') {
+      return;
+    }
+
+    const baseUrl = server.host;
+    const downloadUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ep.container_extension || 'mp4'}`;
+    
+    startDownload({
+      ...ep,
+      url: downloadUrl,
+      type: 'series',
+      title: `${titleText} - S${ep.season || selectedSeason} E${ep.episode_num}: ${ep.title}`,
+      poster: ep.info?.movie_image || posterSrc
+    });
+    showToast('Download started! Check the Downloads page.');
+  };
+
+  const handleDownloadSeason = () => {
+    if (typeof window === 'undefined' || !window.electronAPI) {
+      return showToast('Downloads are only supported in the desktop app.', true);
+    }
+    if (episodes.length === 0) return;
+    
+    showToast(`Downloading ${episodes.length} episodes of Season ${selectedSeason}...`);
+    
+    episodes.forEach((ep, index) => {
+      setTimeout(() => {
+        const streamId = String(ep.id);
+        const dlState = getDownloadState(streamId);
+        if (dlState) return; // already downloaded/downloading
+
+        let ext = ep.container_extension || 'mp4';
+        const baseUrl = server.host;
+        const downloadUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ext}`;
+        
+        startDownload({
+          ...ep,
+          url: downloadUrl,
+          type: 'series',
+          title: `${titleText} - S${ep.season || selectedSeason} E${ep.episode_num}: ${ep.title}`,
+          poster: ep.info?.movie_image || posterSrc
+        });
+      }, index * 500);
+    });
+  };
+
   const handleSeasonChange = (e) => {
     const season = e.target.value;
     setSelectedSeason(season);
@@ -189,20 +296,71 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
 
             <div className="detail-hero-actions">
               {item.type === 'vod' && (
-                <button className="btn-watch-primary" onClick={() => onPlay(item)}>
-                  <Play fill="black" size={24} /> Play Movie
-                </button>
+                <>
+                  <button className="btn-watch-primary" onClick={() => onPlay(item)}>
+                    <Play fill="black" size={24} /> Play Movie
+                  </button>
+                </>
               )}
               {item.type === 'series' && episodes.length > 0 && (
-                <button className="btn-watch-primary" onClick={() => handlePlayEpisode(episodes[0])}>
-                  <Play fill="black" size={24} /> Play S1:E1
-                </button>
+                <>
+                  <button className="btn-watch-primary" onClick={() => handlePlayEpisode(episodes[0])}>
+                    <Play fill="black" size={24} /> Play S1:E1
+                  </button>
+                </>
               )}
-              <button className="btn-action-circle" title="My List">
-                <Bookmark size={24} />
-              </button>
-              <button className="btn-action-circle" title="Share">
-                <Share size={24} />
+              
+              {(() => {
+                const streamId = String(item?.series_id || item?.stream_id || item?.id);
+                const libItem = activeProfile?.library?.find(l => l.stream_id === streamId) || {};
+                
+                return (
+                  <>
+                    <button 
+                      className={`btn-action-circle ${libItem.rating === 'dislike' ? 'active-rating' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); toggleRating(streamId, item, 'dislike'); }}
+                      style={{ backgroundColor: libItem.rating === 'dislike' ? 'rgba(255,255,255,0.2)' : undefined }}
+                    ><ThumbsDown size={24} fill={libItem.rating === 'dislike' ? 'white' : 'none'} /></button>
+                    
+                    <button 
+                      className="btn-action-circle" 
+                      onClick={(e) => { e.stopPropagation(); toggleCollection(streamId, item); }}
+                    >
+                      {libItem.in_collection ? <Check size={24} className="icon-anim-check" /> : <Plus size={24} className="icon-anim-plus" />}
+                    </button>
+                    
+                    <button 
+                      className={`btn-action-circle ${libItem.rating === 'like' ? 'active-rating' : ''}`} 
+                      onClick={(e) => { e.stopPropagation(); toggleRating(streamId, item, 'like'); }}
+                      style={{ backgroundColor: libItem.rating === 'like' ? 'rgba(255,255,255,0.2)' : undefined }}
+                    ><ThumbsUp size={24} fill={libItem.rating === 'like' ? 'white' : 'none'} /></button>
+                  </>
+                );
+              })()}
+              
+              <button className="btn-action-circle" title="Download" onClick={item.type === 'vod' ? handleDownloadVod : handleDownloadSeason} style={{ padding: 0 }}>
+                {(() => {
+                  const streamId = String(item?.stream_id || item?.id);
+                  const dlState = getDownloadState(streamId);
+                  if (item.type === 'vod' && dlState?.status === 'downloading') {
+                    return (
+                      <div style={{ position: 'relative', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
+                          <circle cx="22" cy="22" r="20" stroke="rgba(255,255,255,0.2)" strokeWidth="2" fill="none" />
+                          <circle cx="22" cy="22" r="20" stroke="#fff" strokeWidth="2" fill="none" strokeDasharray={125.6} strokeDashoffset={125.6 - (dlState.progress / 100) * 125.6} transform="rotate(-90 22 22)" style={{ transition: 'stroke-dashoffset 0.3s' }} />
+                        </svg>
+                        <div style={{ width: '12px', height: '12px', backgroundColor: '#fff', borderRadius: '2px' }} /> {/* Pause icon */}
+                      </div>
+                    );
+                  }
+                  if (item.type === 'vod' && dlState?.status === 'paused') {
+                    return <Play size={20} fill="white" />;
+                  }
+                  if (item.type === 'vod' && dlState?.status === 'completed') {
+                    return <Check size={24} className="icon-anim-check" />;
+                  }
+                  return <Download size={24} />;
+                })()}
               </button>
             </div>
 
@@ -260,12 +418,43 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
                     {formatDuration(ep) && (
                       <div className="episode-duration">{formatDuration(ep)}</div>
                     )}
+                    <button className="ep-download-btn" onClick={(e) => { e.stopPropagation(); handleDownloadEpisode(ep); }} style={{ background: 'transparent', border: 'none', color: '#aaa', cursor: 'pointer', padding: '8px', marginLeft: 'auto' }} title="Download Episode">
+                      {(() => {
+                        const dlState = getDownloadState(ep.id);
+                        if (dlState?.status === 'downloading') {
+                          return (
+                            <div style={{ position: 'relative', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="32" height="32" viewBox="0 0 32 32" style={{ position: 'absolute', top: 0, left: 0 }}>
+                                <circle cx="16" cy="16" r="14" stroke="rgba(255,255,255,0.2)" strokeWidth="2" fill="none" />
+                                <circle cx="16" cy="16" r="14" stroke="#fff" strokeWidth="2" fill="none" strokeDasharray={88} strokeDashoffset={88 - (dlState.progress / 100) * 88} transform="rotate(-90 16 16)" style={{ transition: 'stroke-dashoffset 0.3s' }} />
+                              </svg>
+                              <div style={{ width: '8px', height: '8px', backgroundColor: '#fff', borderRadius: '1px' }} /> {/* Pause icon */}
+                            </div>
+                          );
+                        }
+                        if (dlState?.status === 'paused') {
+                          return <Play size={16} fill="white" />;
+                        }
+                        if (dlState?.status === 'completed') {
+                          return <Check size={20} color="#46d369" />;
+                        }
+                        return <Download size={20} />;
+                      })()}
+                    </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
         )}
+      </div>
+
+      {/* Toast Notification */}
+      <div className={`toast-notification ${toast.show ? 'show' : ''}`}>
+        <div className="toast-icon" style={{ background: toast.isError ? '#ff3b30' : '#46d369' }}>
+          {toast.isError ? <ThumbsDown size={16} fill="white" /> : <Check size={16} color="white" />}
+        </div>
+        <span>{toast.message}</span>
       </div>
     </div>
   );

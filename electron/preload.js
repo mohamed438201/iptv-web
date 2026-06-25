@@ -9,5 +9,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   restartApp: () => ipcRenderer.send('restart-app'),
   checkForUpdates: () => ipcRenderer.send('check-for-updates'),
   setDiscordActivity: (details, state) => ipcRenderer.send('set-discord-activity', { details, state }),
-  fetchApi: (url) => ipcRenderer.invoke('fetch-api', url)
+  fetchApi: (url) => ipcRenderer.invoke('fetch-api', url),
+  startDownload: (item) => ipcRenderer.invoke('start-download', item),
+  pauseDownload: (id) => ipcRenderer.invoke('pause-download', id),
+  getDownloads: () => ipcRenderer.invoke('get-downloads'),
+  removeDownload: (id) => ipcRenderer.invoke('remove-download', id),
+  onOfflineDownloadProgress: (callback) => ipcRenderer.on('on-download-progress', (event, data) => callback(data)),
+  onOfflineDownloadComplete: (callback) => ipcRenderer.on('on-download-complete', (event, data) => callback(data)),
+  showItemInFolder: (id) => ipcRenderer.invoke('show-item-in-folder', id)
 });

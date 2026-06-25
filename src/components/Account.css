@@ -503,3 +503,85 @@
     width: 100%;
   }
 }
+
+/* Premium Modal */
+.premium-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.premium-modal {
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 4px solid #E50914;
+  padding: 32px;
+  border-radius: 12px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  animation: slideUp 0.3s ease-out;
+}
+
+.modal-title {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.modal-message {
+  color: #a3a3a3;
+  margin: 0 0 32px 0;
+  line-height: 1.5;
+  font-size: 15px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.premium-btn {
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.premium-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.premium-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.premium-btn.danger {
+  background: #E50914;
+  color: #fff;
+}
+.premium-btn.danger:hover {
+  background: #f40612;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

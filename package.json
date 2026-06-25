@@ -22,6 +22,7 @@
   "build": {
     "appId": "com.ugeen.iptv",
     "productName": "IPTV Premium",
+    "icon": "public/logo.png",
     "directories": {
       "output": "release"
     },
@@ -60,6 +61,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-phone-number-input": "^3.4.17",
+    "react-router-dom": "^7.18.0",
     "react-youtube": "^10.1.0",
     "uuid": "^14.0.1",
     "video.js": "^8.23.8"

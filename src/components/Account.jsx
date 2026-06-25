@@ -14,15 +14,18 @@ const AVATARS = [
 ];
 
 export default function Account({ onBack }) {
-  const { user, activeProfile, logout, selectProfile, addProfile, editProfile, removeProfile } = useAuth();
+  const { user, activeProfile, logout, selectProfile, clearActiveProfile, addProfile, editProfile, removeProfile } = useAuth();
   
   const [isEditingProfiles, setIsEditingProfiles] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState(null);
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileAvatar, setNewProfileAvatar] = useState(AVATARS[0]);
   const [error, setError] = useState('');
+  const [profileToDelete, setProfileToDelete] = useState(null);
 
   if (!user || !activeProfile) return null;
+
+  const maxProfiles = PLANS[user.planId]?.maxProfiles || 1;
 
   const handleSignOut = () => logout();
 
@@ -50,18 +53,23 @@ export default function Account({ onBack }) {
     }
   };
 
-  const handleDeleteProfile = async (id) => {
+  const handleDeleteProfile = (id) => {
     if (user.profiles.length <= 1) {
       setError('You must have at least one profile.');
       return;
     }
-    if (window.confirm('Are you sure you want to delete this profile?')) {
-      try {
-        await removeProfile(id);
-        setError('');
-      } catch (err) {
-        setError(err.message);
-      }
+    setProfileToDelete(id);
+  };
+
+  const confirmDeleteProfile = async () => {
+    if (!profileToDelete) return;
+    try {
+      await removeProfile(profileToDelete);
+      setError('');
+      setProfileToDelete(null);
+    } catch (err) {
+      setError(err.message);
+      setProfileToDelete(null);
     }
   };
 
@@ -89,20 +97,47 @@ export default function Account({ onBack }) {
             <span style={{ color: 'white', marginLeft: '8px', fontSize: '16px' }}>Back to Home</span>
           </button>
           
-          <div className="sidebar-profile-card">
-            <div className="profile-avatar-wrapper">
-              <img src={activeProfile.avatar} alt="Profile" className="profile-avatar-large" />
-              <button className="edit-avatar-btn" onClick={() => setIsEditingProfiles(true)}><Edit2 size={14} /></button>
+          <div className="sidebar-profile-card" style={{ background: '#222', padding: '24px', borderRadius: '12px', border: 'none' }}>
+            <div className="profile-avatar-wrapper" style={{ margin: '0' }}>
+              <img src={activeProfile.avatar} alt="Profile" className="profile-avatar-large" style={{ borderRadius: '12px', width: '120px', height: '120px', objectFit: 'cover' }} />
+              <button className="edit-avatar-btn" onClick={() => setIsEditingProfiles(true)} style={{ background: '#333', border: '1px solid #444', right: '-10px', bottom: '-10px' }}><Edit2 size={14} color="#aaa" /></button>
             </div>
 
-            <div className="profile-name-row">
-              <h2>{activeProfile.name}</h2>
+            <div className="profile-name-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px' }}>
+              <h2 style={{ margin: 0, fontSize: '24px', color: 'white' }}>{activeProfile.name}</h2>
+              <Edit2 size={16} color="#aaa" style={{ cursor: 'pointer' }} onClick={() => setIsEditingProfiles(true)} />
             </div>
-            <p className="member-since">Subscriber since {new Date().getFullYear()}</p>
+            
+            <p className="member-since" style={{ color: '#aaa', fontSize: '13px', margin: '4px 0 24px 0' }}>
+              Member Since {new Date(user.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </p>
 
-            <div className="sidebar-actions">
-              <button className="sidebar-btn btn-outline" onClick={handleSignOut} style={{ cursor: 'pointer' }}>Sign Out</button>
-              <button className="sidebar-btn btn-outline" onClick={() => selectProfile(null)} style={{ cursor: 'pointer' }}>Switch Profile</button>
+            <div className="stats-list" style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                <span style={{ color: '#e5e5e5' }}>Lists</span>
+                <span style={{ color: '#e5e5e5' }}>0</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                <span style={{ color: '#e5e5e5' }}>Collections</span>
+                <span style={{ color: '#e5e5e5' }}>0</span>
+              </div>
+            </div>
+
+            <div className="stats-list" style={{ marginBottom: '24px' }}>
+              <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '8px', margin: 0 }}>Viewing Activity</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                <span style={{ color: '#e5e5e5' }}>Watched Movies</span>
+                <span style={{ color: '#e5e5e5' }}>{activeProfile.continueWatching?.filter(h => h.item?.type === 'vod' || h.item?.type === 'movie').length || 0}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '15px', fontWeight: 'bold' }}>
+                <span style={{ color: '#e5e5e5' }}>Watched Serials</span>
+                <span style={{ color: '#e5e5e5' }}>{activeProfile.continueWatching?.filter(h => h.item?.type === 'series').length || 0}</span>
+              </div>
+            </div>
+
+            <div className="sidebar-actions" style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+              <button className="sidebar-btn btn-outline" onClick={handleSignOut} style={{ cursor: 'pointer', flex: 1, padding: '10px', fontSize: '14px', borderRadius: '8px', background: 'transparent', border: '1px solid #444', color: 'white', fontWeight: 'bold', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#333'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>Sign Out</button>
+              <button className="sidebar-btn btn-outline" onClick={() => clearActiveProfile()} style={{ cursor: 'pointer', flex: 1, padding: '10px', fontSize: '14px', borderRadius: '8px', background: 'transparent', border: '1px solid #444', color: 'white', fontWeight: 'bold', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#333'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>View Profile</button>
             </div>
           </div>
         </div>
@@ -202,7 +237,7 @@ export default function Account({ onBack }) {
                     </div>
                   </div>
                 ) : (
-                  isEditingProfiles && user.profiles.length < 4 && (
+                  isEditingProfiles && user.profiles.length < maxProfiles && (
                     <div className="manage-profile-item add-new-btn" onClick={startNew}>
                       <Plus size={24} color="#888" />
                       <span>Add Profile</span>
@@ -215,6 +250,19 @@ export default function Account({ onBack }) {
           
         </div>
       </div>
+
+      {profileToDelete && (
+        <div className="premium-modal-overlay">
+          <div className="premium-modal">
+            <h3 className="modal-title">Delete Profile</h3>
+            <p className="modal-message">Are you sure you want to delete this profile? This action cannot be undone.</p>
+            <div className="modal-actions">
+              <button className="premium-btn secondary" onClick={() => setProfileToDelete(null)}>Cancel</button>
+              <button className="premium-btn danger" onClick={confirmDeleteProfile}>Delete Profile</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

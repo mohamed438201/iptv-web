@@ -34,13 +34,19 @@ class ErrorBoundary extends React.Component {
 }
 
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { DownloadsProvider } from './contexts/DownloadsContext.jsx';
+import { HashRouter } from 'react-router-dom';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <HashRouter>
+        <AuthProvider>
+          <DownloadsProvider>
+            <App />
+          </DownloadsProvider>
+        </AuthProvider>
+      </HashRouter>
     </ErrorBoundary>
   </StrictMode>,
 )

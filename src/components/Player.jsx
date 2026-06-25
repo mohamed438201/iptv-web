@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Maximize, Minimize, ArrowLeft, Loader2, AlertCircle, Volume2, VolumeX, RotateCcw, RotateCw, Copy, MessageSquare, ChevronDown, X, SkipForward } from 'lucide-react';
+import { Play, Pause, Maximize, Minimize, ArrowLeft, ArrowRight, Loader2, AlertCircle, Volume2, VolumeX, RotateCcw, RotateCw, Copy, MessageSquare, ChevronDown, X, SkipForward } from 'lucide-react';
 import Hls from 'hls.js';
 import { useAuth } from '../contexts/AuthContext';
 import { saveContinueWatching } from '../services/db';
@@ -28,6 +28,20 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
   const [duration, setDuration] = useState(0);
   
   const [showEpisodesPanel, setShowEpisodesPanel] = useState(false);
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
+  const [selectedSeason, setSelectedSeason] = useState(channel?.season || 1);
+
+  useEffect(() => {
+    if (channel?.season) {
+      setSelectedSeason(channel.season);
+    }
+  }, [channel]);
+
+  const isSeries = channel?.type === 'series';
+  const availableSeasons = [...new Set(episodes.map(e => Number(e.season)))].sort((a, b) => a - b);
+  const seasonEpisodes = episodes.filter(e => String(e.season) === String(selectedSeason));
+
+  const playingSeason = channel?.season || 1;
 
   const controlsTimeoutRef = useRef(null);
 
@@ -63,8 +77,8 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-
-    const isMp4OrMkv = finalUrl.includes('.mp4') || finalUrl.includes('.mkv') || finalUrl.includes('.avi');
+    const isOfflineMp4 = channel.isOffline && !finalUrl.includes('.m3u8');
+    const isMp4OrMkv = finalUrl.includes('.mp4') || finalUrl.includes('.mkv') || finalUrl.includes('.avi') || isOfflineMp4;
     
     if (finalUrl.endsWith('.ts')) {
       finalUrl = finalUrl.replace(/\.ts$/, '.m3u8');
@@ -94,7 +108,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
       video.onloadedmetadata = attemptPlay;
       video.onerror = () => {
         setIsLoading(false);
-        setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
+        setErrorMsg("Playback failed (Not supported or no connection)");
       };
     } else {
       if (Hls.isSupported()) {
@@ -107,6 +121,13 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: 10,
           fragLoadingMaxRetry: 5,
+          xhrSetup: function(xhr, url) {
+            const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            // If using the local proxy, route ALL segments through it to keep TLS fingerprint consistent!
+            if (isDev && url.startsWith('http') && !url.startsWith('http://127.0.0.1:12121')) {
+              xhr.open('GET', 'http://127.0.0.1:12121/' + url, true);
+            }
+          }
         });
         hlsRef.current = hls;
 
@@ -121,7 +142,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                setErrorMsg('خطأ في الاتصال بالشبكة أو البث غير متاح.');
+                setErrorMsg('Network error or stream is unavailable.');
                 hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
@@ -130,7 +151,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
                 break;
               default:
                 hls.destroy();
-                setErrorMsg('تعذر تشغيل هذا البث حالياً.');
+                setErrorMsg('Unable to play this stream right now.');
                 break;
             }
           }
@@ -143,7 +164,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
         });
         video.onerror = () => {
           setIsLoading(false);
-          setErrorMsg("تعذر التشغيل (غير مدعوم أو لا يوجد اتصال)");
+          setErrorMsg("Playback failed (Not supported or no connection)");
         };
       }
     }
@@ -270,9 +291,6 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
 
   if (!channel) return null;
 
-  const isSeries = episodes && episodes.length > 0;
-  const currentSeason = channel.season || 1;
-  const seasonEpisodes = episodes.filter(ep => Number(ep.season) === Number(currentSeason));
 
   return (
     <div 
@@ -292,9 +310,9 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
         onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
       ></video>
 
-      {isSeries && duration > 0 && (duration - currentTime <= 240 || (currentTime / duration) >= 0.90) && episodes.find(ep => 
-        (Number(ep.season) === Number(currentSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
-        (Number(ep.season) === Number(currentSeason) + 1 && Number(ep.episode_num) === 1)
+      {isSeries && duration > 0 && (duration - currentTime <= 180) && episodes.find(ep => 
+        (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
+        (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
       ) && (
         <button 
           className="next-episode-overlay premium-btn-primary" 
@@ -302,8 +320,8 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
           onClick={(e) => {
             e.stopPropagation();
             const nextEp = episodes.find(ep => 
-              (Number(ep.season) === Number(currentSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
-              (Number(ep.season) === Number(currentSeason) + 1 && Number(ep.episode_num) === 1)
+              (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
+              (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
             );
             if (nextEp) onPlayEpisode(nextEp);
           }}
@@ -313,11 +331,11 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
             <span style={{display: 'block', fontSize: '12px', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px'}}>Up Next</span>
             <span style={{ fontWeight: 'bold' }}>
               S{episodes.find(ep => 
-                (Number(ep.season) === Number(currentSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
-                (Number(ep.season) === Number(currentSeason) + 1 && Number(ep.episode_num) === 1)
+                (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
+                (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
               )?.season} E{episodes.find(ep => 
-                (Number(ep.season) === Number(currentSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
-                (Number(ep.season) === Number(currentSeason) + 1 && Number(ep.episode_num) === 1)
+                (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
+                (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
               )?.episode_num}
             </span>
           </div>
@@ -333,10 +351,10 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
       {errorMsg && (
         <div className="error-message">
           <AlertCircle size={48} color="#E50914" />
-          <h3 style={{marginTop: '16px'}}>عذراً، تعذر التشغيل</h3>
+          <h3 style={{marginTop: '16px'}}>Oops! Playback Failed</h3>
           <p>{errorMsg}</p>
           <button onClick={onBack} style={{marginTop: '24px', background: '#E50914', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '4px', cursor: 'pointer', fontSize: '16px'}}>
-            العودة
+            Go Back
           </button>
         </div>
       )}
@@ -344,7 +362,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
       <div className={`player-overlay ${!showControls && isPlaying && !isLoading && !errorMsg ? 'hidden' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="player-header">
           <button className="back-btn" onClick={onBack}>
-            <ArrowLeft size={32} />
+            <ArrowRight size={32} />
           </button>
           <div className="header-center">
             <h2 className="header-title">{seriesInfo?.name || channel.name}</h2>
@@ -435,8 +453,62 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
       {/* Episodes Side Panel */}
       <div className="episodes-panel-overlay" style={{ pointerEvents: showEpisodesPanel ? 'auto' : 'none' }} onClick={() => setShowEpisodesPanel(false)}>
         <div className={`episodes-panel ${showEpisodesPanel ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
-          <div className="episodes-header">
-            <h3>Season {currentSeason} <ChevronDown size={20} /></h3>
+          <div className="episodes-header" style={{ position: 'relative' }}>
+            <h3 
+              onClick={() => setShowSeasonDropdown(!showSeasonDropdown)} 
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}
+            >
+              Season {selectedSeason} <ChevronDown size={20} />
+            </h3>
+            
+            {showSeasonDropdown && (
+              <div className="custom-season-dropdown" style={{ 
+                position: 'absolute', 
+                top: '100%', 
+                left: '24px', 
+                background: '#141414', 
+                border: '1px solid #333', 
+                borderRadius: '4px', 
+                zIndex: 100, 
+                minWidth: '120px', 
+                marginTop: '8px', 
+                maxHeight: '200px', 
+                overflowY: 'auto',
+                boxShadow: '0 10px 20px rgba(0,0,0,0.5)'
+              }}>
+                {availableSeasons.map(s => (
+                  <div 
+                    key={s} 
+                    onClick={(e) => { 
+                      e.stopPropagation();
+                      setSelectedSeason(s); 
+                      setShowSeasonDropdown(false); 
+                    }}
+                    style={{ 
+                      padding: '12px 16px', 
+                      cursor: 'pointer', 
+                      background: Number(selectedSeason) === Number(s) ? 'rgba(255,255,255,0.1)' : 'transparent', 
+                      color: Number(selectedSeason) === Number(s) ? 'white' : '#aaa', 
+                      fontSize: '16px', 
+                      borderBottom: '1px solid #222',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                    onMouseLeave={e => { 
+                      if (Number(selectedSeason) !== Number(s)) {
+                        e.currentTarget.style.color = '#aaa'; 
+                        e.currentTarget.style.background = 'transparent';
+                      } else {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                      }
+                    }}
+                  >
+                    Season {s}
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <button className="close-panel-btn" onClick={() => setShowEpisodesPanel(false)}>
               <X size={24} />
             </button>

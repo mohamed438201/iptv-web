@@ -35,8 +35,18 @@ body {
 
 /* Scrollbar customization */
 ::-webkit-scrollbar {
-    width: 0px; 
-    height: 0px;
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
 .app-container {
@@ -937,7 +947,99 @@ body {
 }
 
 .groups-drawer.open .drawer-content {
-    transform: translateY(0);
+    transform: translateY(2px);
+}
+
+/* Cinematic Loader Screen */
+.cinematic-loader-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: #000;
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cinematic-loader-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(229, 9, 20, 0.2) 0%, rgba(0, 0, 0, 1) 60%);
+  animation: pulseCinematicBg 3s infinite alternate;
+}
+
+@keyframes pulseCinematicBg {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+.cinematic-loader-content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: fadeInCinematic 1s ease-out;
+}
+
+@keyframes fadeInCinematic {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cinematic-logo {
+  font-family: 'Bebas Neue', 'Inter', sans-serif;
+  font-size: 5rem;
+  letter-spacing: 6px;
+  margin-bottom: 40px;
+  display: flex;
+  gap: 16px;
+  text-transform: uppercase;
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.cinematic-logo .red-glow {
+  color: #E50914;
+  animation: redGlowAnim 2s ease-in-out infinite alternate;
+}
+
+.cinematic-logo .white-text {
+  color: #ffffff;
+}
+
+@keyframes redGlowAnim {
+  from { text-shadow: 0 0 15px rgba(229, 9, 20, 0.6), 0 0 30px rgba(229, 9, 20, 0.4); }
+  to { text-shadow: 0 0 30px rgba(229, 9, 20, 0.9), 0 0 50px rgba(229, 9, 20, 0.7), 0 0 70px rgba(229, 9, 20, 0.5); }
+}
+
+.netflix-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #E50914;
+  border-radius: 50%;
+  animation: netflixSpin 1s linear infinite;
+  margin-bottom: 30px;
+}
+
+@keyframes netflixSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cinematic-text {
+  color: #808080;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  animation: pulseText 2s infinite;
+}
+
+@keyframes pulseText {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 .drawer-header {
