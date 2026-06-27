@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Check, Clock, LogOut, Ban, RefreshCw, X, PlayCircle, Edit2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useDialog } from '../contexts/DialogContext';
 import { getAllUsers, approveSubscription, rejectSubscription, banUser, renewSubscription, updateUserByAdmin, PLANS, subscribeToAllUsers } from '../services/db';
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
+  const { confirm } = useDialog();
   const [users, setUsers] = useState([]);
   const [tab, setTab] = useState('all'); // 'all' or 'pending'
   const [editingUserId, setEditingUserId] = useState(null);
@@ -33,17 +35,19 @@ export default function AdminDashboard() {
     await loadUsers();
   };
 
-  const handleBan = async (userId) => {
-    if(window.confirm('Are you sure you want to ban this user?')) {
-      await banUser(userId);
-      await loadUsers();
+  const handleBan = async (id) => {
+    const isConfirmed = await confirm('Are you sure you want to ban this user?');
+    if(isConfirmed) {
+      await banUser(id);
+      setUsers(users.map(u => u.id === id ? { ...u, payment_status: 'banned' } : u));
     }
   };
 
-  const handleRenew = async (userId) => {
-    if(window.confirm('Add 30 days to this subscription?')) {
-      await renewSubscription(userId, 1);
-      await loadUsers();
+  const handleRenew = async (id) => {
+    const isConfirmed = await confirm('Add 30 days to this subscription?');
+    if(isConfirmed) {
+      await renewSubscription(id);
+      loadUsers();
     }
   };
 

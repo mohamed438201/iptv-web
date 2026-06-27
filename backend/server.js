@@ -1,9 +1,26 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const pool = require('./db');
 
 const app = express();
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_development';
+
+// Auth Middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Invalid token.' });
+    req.user = user;
+    next();
+  });
+};
 app.use(cors());
 app.use(express.json());
 
@@ -16,13 +33,19 @@ app.post('/api/auth/register', async (req, res) => {
     const [existing] = await pool.query('SELECT id FROM app_users WHERE email = ?', [email]);
     if (existing.length > 0) return res.status(400).json({ error: 'Email already registered' });
 
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
     const userId = uuidv4();
     await pool.query(
       'INSERT INTO app_users (id, email, password, phone) VALUES (?, ?, ?, ?)',
-      [userId, email, password, phone]
+      [userId, email, hashedPassword, phone]
     );
 
-    res.json({ id: userId, email, phone });
+    const token = jwt.sign({ id: userId }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({ id: userId, email, phone, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -31,20 +54,32 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const [users] = await pool.query('SELECT id FROM app_users WHERE email = ? AND password = ?', [email, password]);
+    const [users] = await pool.query('SELECT * FROM app_users WHERE email = ?', [email]);
     
     if (users.length === 0) return res.status(401).json({ error: 'Invalid email or password' });
     
-    res.json({ id: users[0].id });
+    const user = users[0];
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    
+    res.json({ id: user.id, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Fetch user with relations
-app.get('/api/users/:id', async (req, res) => {
+app.get('/api/users/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.params.id;
+    // Ensure users can only fetch their own data unless they are an admin. 
+    // We assume an admin flag or role would be checked here, but for now we restrict to the user themselves.
+    if (req.user.id !== userId) {
+        // Quick bypass if we implement admin later: allow if req.user.role === 'admin'
+        return res.status(403).json({ error: 'Unauthorized to access this user data' });
+    }
     const [users] = await pool.query('SELECT * FROM app_users WHERE id = ?', [userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     
@@ -77,6 +112,7 @@ app.get('/api/users/:id', async (req, res) => {
       }));
     }
     
+    
     const mappedUser = {
       ...user,
       planId: user.plan_id,
@@ -86,6 +122,9 @@ app.get('/api/users/:id', async (req, res) => {
       profiles: profiles
     };
     
+    // Security: Do not leak password hash
+    delete mappedUser.password;
+    
     res.json(mappedUser);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -93,7 +132,8 @@ app.get('/api/users/:id', async (req, res) => {
 });
 
 // Get all users (Admin)
-app.get('/api/users', async (req, res) => {
+// TODO: Ideally, restrict this to 'admin' role users.
+app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const [users] = await pool.query('SELECT * FROM app_users ORDER BY created_at DESC');
     
@@ -114,13 +154,17 @@ app.get('/api/users', async (req, res) => {
       user.profiles = profiles;
     }
     
-    const mappedUsers = users.map(user => ({
-      ...user,
-      planId: user.plan_id,
-      paymentStatus: user.payment_status,
-      receiptImage: user.receipt_image,
-      subscriptionEndDate: user.subscription_end_date
-    }));
+    const mappedUsers = users.map(user => {
+      const u = {
+        ...user,
+        planId: user.plan_id,
+        paymentStatus: user.payment_status,
+        receiptImage: user.receipt_image,
+        subscriptionEndDate: user.subscription_end_date
+      };
+      delete u.password;
+      return u;
+    });
     
     res.json(mappedUsers);
   } catch (error) {
@@ -129,7 +173,7 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Update user (Admin)
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.params.id;
     const updates = req.body; // { plan_id, payment_status, subscription_end_date }
@@ -157,11 +201,23 @@ app.put('/api/users/:id', async (req, res) => {
     const keys = Object.keys(updates);
     if (keys.length === 0) return res.json({ success: true });
 
-    const setClause = keys.map(k => `${k} = ?`).join(', ');
-    const values = keys.map(k => updates[k]);
-    values.push(userId);
+    // Hash password if it's being updated
+    if (updates.password) {
+      const salt = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(updates.password, salt);
+    }
 
-    await pool.query(`UPDATE app_users SET ${setClause} WHERE id = ?`, values);
+    // SECURITY: Whitelist fields allowed to be updated to prevent SQL injection & unintended modifications
+    const allowedFields = ['plan_id', 'payment_status', 'subscription_end_date', 'receipt_image', 'password'];
+    const validKeys = keys.filter(k => allowedFields.includes(k));
+    
+    if (validKeys.length > 0) {
+      const setClause = validKeys.map(k => `${k} = ?`).join(', ');
+      const values = validKeys.map(k => updates[k]);
+      values.push(userId);
+
+      await pool.query(`UPDATE app_users SET ${setClause} WHERE id = ?`, values);
+    }
     
     // Auto-create default profile if payment is active
     if (updates.payment_status === 'active') {
@@ -181,7 +237,7 @@ app.put('/api/users/:id', async (req, res) => {
 });
 
 // Profiles
-app.post('/api/profiles', async (req, res) => {
+app.post('/api/profiles', authenticateToken, async (req, res) => {
   try {
     const { user_id, name, avatar } = req.body;
 
@@ -209,7 +265,7 @@ app.post('/api/profiles', async (req, res) => {
   }
 });
 
-app.put('/api/profiles/:id', async (req, res) => {
+app.put('/api/profiles/:id', authenticateToken, async (req, res) => {
   try {
     const { name, avatar } = req.body;
     await pool.query(
@@ -222,7 +278,7 @@ app.put('/api/profiles/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/profiles/:id', async (req, res) => {
+app.delete('/api/profiles/:id', authenticateToken, async (req, res) => {
   try {
     await pool.query('DELETE FROM profiles WHERE id = ?', [req.params.id]);
     res.json({ success: true });
@@ -232,7 +288,7 @@ app.delete('/api/profiles/:id', async (req, res) => {
 });
 
 // Watch History
-app.post('/api/watch-history', async (req, res) => {
+app.post('/api/watch-history', authenticateToken, async (req, res) => {
   try {
     const { profile_id, stream_id, item, progress, duration, percentage } = req.body;
     
@@ -255,7 +311,7 @@ app.post('/api/watch-history', async (req, res) => {
 });
 
 // Promo Codes
-app.post('/api/promo/verify', async (req, res) => {
+app.post('/api/promo/verify', authenticateToken, async (req, res) => {
   try {
     const { code } = req.body;
     const [codes] = await pool.query('SELECT discount_percentage FROM promo_codes WHERE code = ?', [code]);
@@ -268,7 +324,7 @@ app.post('/api/promo/verify', async (req, res) => {
 });
 
 // === Library Routes ===
-app.post('/api/library/toggle-rating', async (req, res) => {
+app.post('/api/library/toggle-rating', authenticateToken, async (req, res) => {
   try {
     const { profile_id, stream_id, item, rating } = req.body;
     const [rows] = await pool.query('SELECT * FROM user_library WHERE profile_id = ? AND stream_id = ?', [profile_id, stream_id]);
@@ -299,7 +355,7 @@ app.post('/api/library/toggle-rating', async (req, res) => {
   }
 });
 
-app.post('/api/library/toggle-collection', async (req, res) => {
+app.post('/api/library/toggle-collection', authenticateToken, async (req, res) => {
   try {
     const { profile_id, stream_id, item } = req.body;
     const [rows] = await pool.query('SELECT * FROM user_library WHERE profile_id = ? AND stream_id = ?', [profile_id, stream_id]);
@@ -338,9 +394,16 @@ app.post('/api/migrate', async (req, res) => {
       // 1. Insert User
       const userId = u.id.includes('_') ? uuidv4() : u.id; // Handle old format IDs
       try {
+        let finalPassword = u.password;
+        // Hash it if it isn't already hashed (bcrypt hashes start with $2a$ or $2b$)
+        if (finalPassword && !finalPassword.startsWith('$2')) {
+          const salt = await bcrypt.genSalt(10);
+          finalPassword = await bcrypt.hash(finalPassword, salt);
+        }
+
         await pool.query(
           'INSERT INTO app_users (id, email, phone, password, plan_id, payment_status, receipt_image, subscription_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE id=id',
-          [userId, u.email, u.phone, u.password, u.planId, u.paymentStatus, u.receiptImage, u.subscriptionEndDate]
+          [userId, u.email, u.phone, finalPassword, u.planId, u.paymentStatus, u.receiptImage, u.subscriptionEndDate]
         );
       } catch (err) {
         console.error("Error inserting user:", u.email, err.message);

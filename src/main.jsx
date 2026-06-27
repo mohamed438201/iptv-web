@@ -35,17 +35,20 @@ class ErrorBoundary extends React.Component {
 
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { DownloadsProvider } from './contexts/DownloadsContext.jsx';
+import { DialogProvider } from './contexts/DialogContext.jsx';
 import { HashRouter } from 'react-router-dom';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
       <HashRouter>
-        <AuthProvider>
-          <DownloadsProvider>
-            <App />
-          </DownloadsProvider>
-        </AuthProvider>
+        <DialogProvider>
+          <AuthProvider>
+            <DownloadsProvider>
+              <App />
+            </DownloadsProvider>
+          </AuthProvider>
+        </DialogProvider>
       </HashRouter>
     </ErrorBoundary>
   </StrictMode>,

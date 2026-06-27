@@ -1,0 +1,749 @@
+diff --git a/src/components/Player.jsx b/src/components/Player.jsx
+index 95bc916..37e6162 100644
+--- a/src/components/Player.jsx
++++ b/src/components/Player.jsx
+@@ -30,6 +30,7 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+   const [showEpisodesPanel, setShowEpisodesPanel] = useState(false);
+   const [showSeasonDropdown, setShowSeasonDropdown] = useState(false);
+   const [selectedSeason, setSelectedSeason] = useState(channel?.season || 1);
++  const [nextCountdown, setNextCountdown] = useState(null);
+ 
+   useEffect(() => {
+     if (channel?.season) {
+@@ -63,6 +64,36 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+     }
+   };
+ 
++  const handleEnded = () => {
++    setIsPlaying(false);
++    if (isSeries) {
++      const nextEp = episodes.find(ep => 
++        (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
++        (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
++      );
++      if (nextEp) {
++        setNextCountdown(5);
++      }
++    }
++  };
++
++  useEffect(() => {
++    if (nextCountdown === null) return;
++    if (nextCountdown === 0) {
++      const nextEp = episodes.find(ep => 
++        (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
++        (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
++      );
++      if (nextEp) {
++        setNextCountdown(null);
++        onPlayEpisode(nextEp);
++      }
++      return;
++    }
++    const t = setTimeout(() => setNextCountdown(prev => prev - 1), 1000);
++    return () => clearTimeout(t);
++  }, [nextCountdown, episodes, playingSeason, channel, onPlayEpisode]);
++
+   useEffect(() => {
+     if (!channel || !channel.url) return;
+ 
+@@ -183,9 +214,40 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+     };
+   }, [channel, refreshCount]);
+ 
++  const audioCtxRef = useRef(null);
++  const gainNodeRef = useRef(null);
++
+   useEffect(() => {
+     if (videoRef.current) {
+-      videoRef.current.volume = volume;
++      if (volume <= 1) {
++        videoRef.current.volume = volume;
++        if (gainNodeRef.current) {
++          gainNodeRef.current.gain.value = 1;
++        }
++      } else {
++        videoRef.current.volume = 1; // Max native volume
++        
++        if (!audioCtxRef.current) {
++          try {
++            const AudioContext = window.AudioContext || window.webkitAudioContext;
++            audioCtxRef.current = new AudioContext();
++            const source = audioCtxRef.current.createMediaElementSource(videoRef.current);
++            gainNodeRef.current = audioCtxRef.current.createGain();
++            source.connect(gainNodeRef.current);
++            gainNodeRef.current.connect(audioCtxRef.current.destination);
++          } catch (e) {
++            console.error("Audio API error:", e);
++          }
++        }
++        
++        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
++          audioCtxRef.current.resume();
++        }
++        
++        if (gainNodeRef.current) {
++          gainNodeRef.current.gain.value = volume; // e.g., 2 = 200%, 3 = 300%
++        }
++      }
+       videoRef.current.muted = isMuted;
+     }
+   }, [volume, isMuted]);
+@@ -261,6 +323,50 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+   }, []);
+ 
++  // Keyboard Shortcuts
++  useEffect(() => {
++    const handleKeyDown = (e) => {
++      // Don't trigger if user is typing in an input
++      if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
++
++      switch(e.key.toLowerCase()) {
++        case ' ':
++        case 'k':
++          e.preventDefault();
++          togglePlay();
++          break;
++        case 'f':
++          e.preventDefault();
++          toggleFullscreen();
++          break;
++        case 'arrowright':
++          e.preventDefault();
++          skipForward();
++          break;
++        case 'arrowleft':
++          e.preventDefault();
++          skipBackward();
++          break;
++        case 'arrowup':
++          e.preventDefault();
++          setVolume(prev => Math.min(3, prev + 0.1));
++          if (isMuted) setIsMuted(false);
++          break;
++        case 'arrowdown':
++          e.preventDefault();
++          setVolume(prev => Math.max(0, prev - 0.1));
++          break;
++        case 'm':
++          e.preventDefault();
++          setIsMuted(prev => !prev);
++          break;
++      }
++    };
++    
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  });
++
+   const handleTimeUpdate = () => {
+     if (!videoRef.current) return;
+     const cTime = videoRef.current.currentTime;
+@@ -308,14 +414,38 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+         onPause={() => setIsPlaying(false)}
+         onTimeUpdate={handleTimeUpdate}
+         onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
++        onEnded={handleEnded}
+       ></video>
+ 
+-      {isSeries && duration > 0 && (duration - currentTime <= 180) && episodes.find(ep => 
++
++      {/* Auto-Play Next Countdown Overlay */}
++      {nextCountdown !== null && (
++        <div className="next-episode-overlay fade-in" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
++          <h2 style={{ color: 'white', fontSize: '24px', marginBottom: '24px' }}>Playing Next Episode in...</h2>
++          <div style={{ fontSize: '72px', fontWeight: 'bold', color: '#E50914', marginBottom: '32px' }}>{nextCountdown}</div>
++          <div style={{ display: 'flex', gap: '16px' }}>
++            <button 
++              onClick={(e) => { e.stopPropagation(); setNextCountdown(0); }}
++              style={{ background: '#E50914', color: 'white', padding: '12px 32px', borderRadius: '4px', border: 'none', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}
++            >
++              Play Now
++            </button>
++            <button 
++              onClick={(e) => { e.stopPropagation(); setNextCountdown(null); onBack(); }}
++              style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '12px 32px', borderRadius: '4px', border: 'none', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}
++            >
++              Cancel
++            </button>
++          </div>
++        </div>
++      )}
++
++      {isSeries && duration > 0 && (duration - currentTime <= 180) && nextCountdown === null && episodes.find(ep => 
+         (Number(ep.season) === Number(playingSeason) && Number(ep.episode_num) === Number(channel.episode_num) + 1) ||
+         (Number(ep.season) === Number(playingSeason) + 1 && Number(ep.episode_num) === 1)
+       ) && (
+         <button 
+-          className="next-episode-overlay premium-btn-primary" 
++          className="next-episode-btn premium-btn-primary fade-in" 
+           style={{ position: 'absolute', bottom: '120px', right: '40px', display: 'flex', alignItems: 'center', gap: '12px', zIndex: 50, padding: '12px 24px' }}
+           onClick={(e) => {
+             e.stopPropagation();
+@@ -393,28 +523,28 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+           <div className="controls-row">
+             <div className="left-controls">
+               <button className="control-btn" onClick={togglePlay}>
+-                {isPlaying ? <Pause size={32} fill="white" /> : <Play size={32} fill="white" />}
++                {isPlaying ? <Pause size={48} fill="white" /> : <Play size={48} fill="white" />}
+               </button>
+               
+               {channel.type !== 'live' && (
+                 <>
+                   <button className="control-btn" onClick={skipBackward}>
+-                    <RotateCcw size={28} />
++                    <RotateCcw size={36} />
+                   </button>
+                   <button className="control-btn" onClick={skipForward}>
+-                    <RotateCw size={28} />
++                    <RotateCw size={36} />
+                   </button>
+                 </>
+               )}
+ 
+               <div className="volume-container">
+                 <button className="control-btn" onClick={() => setIsMuted(!isMuted)}>
+-                  {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
++                  {isMuted || volume === 0 ? <VolumeX size={32} /> : <Volume2 size={32} />}
+                 </button>
+-                <div className="volume-slider-wrapper">
++                <div className="volume-slider-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <input 
+                     type="range" 
+-                    min="0" max="1" step="0.05" 
++                    min="0" max="3" step="0.05" 
+                     value={isMuted ? 0 : volume} 
+                     onChange={(e) => {
+                       setVolume(parseFloat(e.target.value));
+@@ -422,28 +552,31 @@ export default function Player({ channel, episodes = [], seriesInfo = null, onPl
+                     }}
+                     className="volume-slider" 
+                   />
++                  <span style={{ color: 'white', fontSize: '14px', minWidth: '35px' }}>
++                    {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
++                  </span>
+                 </div>
+               </div>
+ 
+               {channel.type !== 'live' && (
+-                <span className="time-display">{formatTime(currentTime)} / {formatTime(duration)}</span>
++                <span className="time-display" style={{ fontSize: '18px', marginLeft: '16px' }}>{formatTime(currentTime)} / {formatTime(duration)}</span>
+               )}
+               {channel.type === 'live' && (
+-                <span className="time-display" style={{color: '#ff3b30'}}>● مباشر</span>
++                <span className="time-display" style={{color: '#ff3b30', fontSize: '18px', marginLeft: '16px'}}>● مباشر</span>
+               )}
+             </div>
+ 
+             <div className="right-controls">
+               {isSeries && (
+-                <button className="icon-text-btn" onClick={() => setShowEpisodesPanel(true)}>
+-                  <Copy size={24} />
++                <button className="control-btn" onClick={() => setShowEpisodesPanel(true)}>
++                  <Copy size={32} />
+                 </button>
+               )}
+-              <button className="icon-text-btn">
+-                <MessageSquare size={24} />
++              <button className="control-btn">
++                <MessageSquare size={32} />
+               </button>
+               <button className="control-btn" onClick={toggleFullscreen}>
+-                {isFullscreen ? <Minimize size={28} /> : <Maximize size={28} />}
++                {isFullscreen ? <Minimize size={36} /> : <Maximize size={36} />}
+               </button>
+             </div>
+           </div>
+diff --git a/src/components/Player.css b/src/components/Player.css
+index 4fe78a8..f9212f4 100644
+--- a/src/components/Player.css
++++ b/src/components/Player.css
+@@ -1,31 +1,28 @@
+ .player-fullscreen {
+   position: fixed;
+-  top: 0;
+-  left: 0;
++  inset: 0;
+   width: 100vw;
+   height: 100vh;
+   background-color: #000;
+   z-index: 9999;
+-  display: flex;
+-  flex-direction: column;
+-  justify-content: center;
+-  align-items: center;
+   overflow: hidden;
++  font-family: system-ui, -apple-system, sans-serif;
+ }
+ 
+ .video-element {
++  position: absolute;
++  top: 0;
++  left: 0;
+   width: 100%;
+   height: 100%;
+-  object-fit: contain;
++  object-fit: cover;
+   background-color: #000;
++  z-index: 0;
+ }
+ 
+ .player-overlay {
+   position: absolute;
+-  top: 0;
+-  left: 0;
+-  width: 100%;
+-  height: 100%;
++  inset: 0;
+   display: flex;
+   flex-direction: column;
+   justify-content: space-between;
+@@ -36,100 +33,120 @@
+ 
+ .player-overlay.hidden {
+   opacity: 0;
++  cursor: none;
+ }
+ 
+-.glass-effect {
+-  background: rgba(30, 30, 30, 0.4);
+-  backdrop-filter: blur(20px);
+-  -webkit-backdrop-filter: blur(20px);
+-  border: 1px solid rgba(255, 255, 255, 0.1);
+-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
++.player-header {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  padding: 32px 48px 100px 48px;
++  background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 40%, transparent 100%);
++  pointer-events: auto;
+ }
+ 
+-.player-header {
+-  position: absolute;
+-  top: 16px;
+-  left: 16px;
+-  right: 16px;
++.back-btn {
++  background: transparent;
++  border: none;
++  color: white;
++  cursor: pointer;
++  padding: 8px;
++  border-radius: 50%;
+   display: flex;
+-  justify-content: center;
+   align-items: center;
+-  pointer-events: none;
++  justify-content: center;
++  transition: transform 0.2s;
+ }
+ 
+-.channel-title-center {
+-  padding: 8px 24px;
+-  border-radius: 100px;
+-  pointer-events: auto;
++.back-btn:hover {
++  transform: scale(1.1);
++}
++
++.header-center {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  gap: 4px;
+ }
+ 
+-.channel-title-center h2 {
++.header-title {
+   color: white;
++  font-size: 20px;
++  font-weight: 700;
+   margin: 0;
+-  font-size: 1.2rem;
+-  font-weight: 500;
+   text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+ }
+ 
+-.back-btn {
+-  position: absolute;
+-  right: 0; /* Align back button to right for RTL, adjust as needed */
++.header-subtitle {
++  color: #ccc;
++  font-size: 14px;
++  margin: 0;
++  font-weight: 500;
++  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
++}
++
++.flag-btn {
+   background: transparent;
+   border: none;
+-  border-radius: 50%;
+-  width: 40px;
+-  height: 40px;
++  color: white;
++  cursor: pointer;
++  padding: 8px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+-  color: white;
+-  cursor: pointer;
+-  transition: background 0.2s;
+-  pointer-events: auto;
+ }
+ 
+-.back-btn:hover {
+-  background: rgba(255, 255, 255, 0.1);
++.player-bottom {
++  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
++  padding: 100px 48px 32px 48px;
++  pointer-events: auto;
++  display: flex;
++  flex-direction: column;
++  gap: 16px;
+ }
+ 
+-.main-controls {
+-  flex: 1;
++.timeline-container {
+   display: flex;
+   align-items: center;
+-  justify-content: center;
+-  pointer-events: auto;
++  width: 100%;
++}
++
++.timeline-slider {
++  width: 100%;
++  height: 4px;
++  -webkit-appearance: none;
++  background: rgba(255, 255, 255, 0.3);
++  background-image: linear-gradient(#E50914, #E50914);
++  background-repeat: no-repeat;
++  border-radius: 2px;
+   cursor: pointer;
++  outline: none;
+ }
+ 
+-.center-play-btn {
+-  width: 80px;
+-  height: 80px;
++.timeline-slider::-webkit-slider-thumb {
++  -webkit-appearance: none;
++  width: 16px;
++  height: 16px;
++  background: #E50914;
+   border-radius: 50%;
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+   cursor: pointer;
+-  transition: transform 0.2s;
++  transition: transform 0.1s;
+ }
+ 
+-.center-play-btn:hover {
+-  transform: scale(1.05);
++.timeline-slider::-webkit-slider-thumb:hover {
++  transform: scale(1.3);
+ }
+ 
+-.bottom-bar {
++.controls-row {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+-  margin: 16px;
+-  padding: 12px 24px;
+-  border-radius: 24px;
+-  pointer-events: auto;
+ }
+ 
+ .left-controls, .right-controls {
+   display: flex;
+   align-items: center;
+-  gap: 16px;
++  gap: 24px;
+ }
+ 
+ .control-btn {
+@@ -140,48 +157,214 @@
+   display: flex;
+   align-items: center;
+   justify-content: center;
+-  padding: 8px;
+-  border-radius: 50%;
+-  transition: background 0.2s;
++  padding: 0;
++  transition: transform 0.2s;
+ }
+ 
+ .control-btn:hover {
+-  background: rgba(255, 255, 255, 0.2);
++  transform: scale(1.1);
++}
++
++.time-display {
++  color: white;
++  font-size: 16px;
++  font-variant-numeric: tabular-nums;
++  font-weight: 500;
++  margin-left: 8px;
+ }
+ 
+ .volume-container {
+   display: flex;
+   align-items: center;
+-  gap: 8px;
++  gap: 12px;
++  position: relative;
++}
++
++.volume-slider-wrapper {
++  width: 0;
++  overflow: hidden;
++  transition: width 0.3s;
++  display: flex;
++  align-items: center;
++}
++
++.volume-container:hover .volume-slider-wrapper {
++  width: 80px;
+ }
+ 
+ .volume-slider {
+   width: 80px;
++  height: 4px;
++  -webkit-appearance: none;
++  background: rgba(255,255,255,0.3);
++  border-radius: 2px;
+   cursor: pointer;
+   accent-color: white;
+ }
+ 
+-.live-indicator {
++.volume-slider::-webkit-slider-thumb {
++  -webkit-appearance: none;
++  width: 12px;
++  height: 12px;
++  background: white;
++  border-radius: 50%;
++}
++
++.icon-text-btn {
+   display: flex;
++  flex-direction: column;
+   align-items: center;
+-  gap: 8px;
+-  color: #ff3b30;
++  gap: 4px;
++  background: none;
++  border: none;
++  color: white;
++  cursor: pointer;
++}
++
++.icon-text-btn span {
++  font-size: 12px;
+   font-weight: 600;
++}
++
++/* Episodes Panel */
++.episodes-panel-overlay {
++  position: absolute;
++  inset: 0;
++  background: transparent;
++  pointer-events: none;
++  z-index: 1000;
++  overflow: hidden;
++}
++
++.episodes-panel {
++  position: absolute;
++  top: 16px;
++  right: 16px;
++  bottom: 16px;
++  width: 400px;
++  background: #181818;
++  border-radius: 12px;
++  display: flex;
++  flex-direction: column;
++  box-shadow: -4px 0 24px rgba(0,0,0,0.5);
++  transform: translateX(120%);
++  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
++  pointer-events: auto;
++  border: 1px solid rgba(255,255,255,0.1);
++  overflow: hidden;
++}
++
++.episodes-panel.open {
++  transform: translateX(0);
++}
++
++.episodes-header {
++  padding: 24px;
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  border-bottom: 1px solid rgba(255,255,255,0.1);
++}
++
++.episodes-header h3 {
++  color: white;
++  font-size: 20px;
++  margin: 0;
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  cursor: pointer;
++}
++
++.close-panel-btn {
++  background: transparent;
++  border: none;
++  color: #aaa;
++  cursor: pointer;
++}
++
++.close-panel-btn:hover {
++  color: white;
++}
++
++.episodes-list {
++  flex: 1;
++  overflow-y: auto;
++  padding: 16px 0;
++}
++
++.episodes-list::-webkit-scrollbar {
++  width: 6px;
++}
++
++.episodes-list::-webkit-scrollbar-thumb {
++  background: #444;
++  border-radius: 3px;
++}
++
++.episode-item {
++  display: flex;
++  padding: 16px 24px;
++  gap: 16px;
++  cursor: pointer;
++  transition: background 0.2s;
++  align-items: flex-start;
++}
++
++.episode-item:hover {
++  background: rgba(255,255,255,0.1);
++}
++
++.episode-item.active {
++  background: rgba(255,255,255,0.05);
++  border-left: 4px solid #E50914;
++}
++
++.ep-thumbnail {
++  width: 130px;
++  aspect-ratio: 16/9;
++  border-radius: 4px;
++  object-fit: cover;
++  background: #222;
++}
++
++.ep-info {
++  flex: 1;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.ep-title-row {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++}
++
++.ep-title {
++  color: white;
+   font-size: 14px;
+-  background: rgba(255, 59, 48, 0.15);
+-  padding: 6px 12px;
+-  border-radius: 100px;
+-  margin-left: 8px;
++  font-weight: 600;
++  margin: 0;
+ }
+ 
+-.live-dot {
+-  width: 8px;
+-  height: 8px;
+-  border-radius: 50%;
+-  background: #ff3b30;
+-  animation: pulse 1.5s infinite;
++.ep-duration {
++  color: #aaa;
++  font-size: 12px;
++}
++
++.ep-desc {
++  color: #999;
++  font-size: 12px;
++  line-height: 1.4;
++  display: -webkit-box;
++  -webkit-line-clamp: 3;
++  -webkit-box-orient: vertical;
++  overflow: hidden;
++  margin: 0;
+ }
+ 
++/* Error and Loader */
+ .error-message {
+   position: absolute;
+   top: 50%;
+@@ -195,21 +378,6 @@
+   align-items: center;
+   text-align: center;
+   color: white;
+-  backdrop-filter: blur(20px);
+-  border: 1px solid rgba(255,255,255,0.1);
+-  min-width: 300px;
+-  z-index: 10000;
+-  pointer-events: auto;
+-}
+-
+-.error-message h3 {
+-  margin: 16px 0 8px 0;
+-  font-size: 1.4rem;
+-}
+-
+-.error-message p {
+-  color: #aaa;
+-  margin: 0;
+ }
+ 
+ .spinner {
+@@ -220,20 +388,3 @@
+   from { transform: rotate(0deg); }
+   to { transform: rotate(360deg); }
+ }
+-
+-@keyframes pulse {
+-  0% { opacity: 1; transform: scale(1); }
+-  50% { opacity: 0.5; transform: scale(0.9); }
+-  100% { opacity: 1; transform: scale(1); }
+-}
+-@media (max-width: 768px) {
+-  .player-header h2 { font-size: 1rem; }
+-  .channel-title-center { padding: 4px 16px; }
+-  .center-play-btn { width: 60px; height: 60px; }
+-  .center-play-btn svg { width: 32px; height: 32px; }
+-  .bottom-bar { padding: 8px 16px; margin: 8px; flex-wrap: wrap; gap: 8px; justify-content: center; border-radius: 16px; }
+-  .volume-slider { width: 60px; }
+-  .live-indicator { font-size: 12px; padding: 4px 8px; }
+-  .error-message { min-width: 250px; padding: 24px; }
+-  .error-message h3 { font-size: 1.2rem; }
+-}

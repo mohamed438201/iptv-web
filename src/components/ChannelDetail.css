@@ -44,7 +44,7 @@
 
 .netflix-back-btn {
   position: absolute;
-  top: 40px;
+  top: 140px;
   right: 40px;
   z-index: 50;
   background: transparent;
@@ -68,7 +68,7 @@
   z-index: 10;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 100px 4% 60px 4%;
+  padding: 160px 4% 60px 4%;
   display: flex;
   flex-direction: column;
   gap: 60px;

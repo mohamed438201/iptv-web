@@ -1,0 +1,86 @@
+.window-controls-container {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 160px; /* Trigger area width */
+  height: 40px; /* Trigger area height */
+  z-index: 9999;
+  -webkit-app-region: no-drag;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  overflow: hidden; /* Hide controls when pushed to the right */
+}
+
+.window-controls-handle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  background: transparent;
+  transition: opacity 0.3s ease;
+}
+
+.window-controls-handle .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+.window-controls-container:hover .window-controls-handle {
+  opacity: 0; /* Hide handle when sliding in */
+}
+
+.window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  height: 32px;
+  background: rgba(15, 15, 15, 0.9);
+  backdrop-filter: blur(16px);
+  border-bottom-left-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: none;
+  border-right: none;
+  transform: translateX(100%); /* Hidden by default */
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.window-controls-container:hover .window-controls {
+  transform: translateX(0); /* Slide in on hover */
+}
+
+.window-controls .control-btn {
+  width: 46px;
+  height: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.window-controls .control-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.window-controls .control-btn.close:hover {
+  background: #E50914; /* Netflix red for close */
+  color: #fff;
+}
+
+.window-controls .control-btn svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 1.5;
+}

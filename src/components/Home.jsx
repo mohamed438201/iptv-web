@@ -5,13 +5,15 @@ import { getTmdbDetails } from '../services/tmdb';
 import YouTube from 'react-youtube';
 import { useAuth } from '../contexts/AuthContext';
 
-function RowScroll({ title, items, isVertical, onItemSelect, onExploreAll }) {
+const RowScroll = React.memo(function RowScroll({ title, items, isVertical, onItemSelect, onExploreAll }) {
   const scrollRef = useRef(null);
   const [showLeft, setShowLeft] = useState(false);
 
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      setShowLeft(scrollRef.current.scrollLeft > 20);
+  const handleScroll = (e) => {
+    if (!e.target) return;
+    const isScrolled = e.target.scrollLeft > 20;
+    if (showLeft !== isScrolled) {
+      setShowLeft(isScrolled);
     }
   };
 
@@ -33,14 +35,18 @@ function RowScroll({ title, items, isVertical, onItemSelect, onExploreAll }) {
         {showLeft && <button className="slider-arrow left" onClick={scrollLeft}><ChevronLeft size={36} /></button>}
         <div className="row-scroll-area" ref={scrollRef} onScroll={handleScroll}>
           {items.map((item, idx) => (
-            <UniversalCard key={idx} item={item} onClick={(clickedItem) => onItemSelect(clickedItem, clickedItem._type)} />
+            <UniversalCard key={`${item.id || item.stream_id || item.series_id}-${idx}`} item={item} onClick={(clickedItem) => onItemSelect(clickedItem, clickedItem._type)} />
           ))}
         </div>
         <button className="slider-arrow right" onClick={scrollRight}><ChevronRight size={36} /></button>
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  return prevProps.title === nextProps.title && 
+         prevProps.items === nextProps.items && 
+         prevProps.isVertical === nextProps.isVertical;
+});
 
 export default function Home({ 
   currentTab,
@@ -76,7 +82,7 @@ export default function Home({
     width: '100%',
     height: '140%',
     playerVars: {
-      autoplay: 1,
+      autoplay: 0,
       controls: 0,
       modestbranding: 1,
       rel: 0,
@@ -84,7 +90,8 @@ export default function Home({
       loop: 0,
       disablekb: 1,
       fs: 0,
-      mute: 1 // Start muted initially, toggleMute handles the rest without reloading
+      mute: 1,
+      playsinline: 1
     }
   }), []);
 
@@ -124,30 +131,35 @@ export default function Home({
     
     if (taggedItems.length > 0) {
       const topStreams = taggedItems.slice(0, 30);
-      const shuffled = [...topStreams].sort(() => 0.5 - Math.random()).slice(0, 20);
+      const shuffled = [...topStreams].sort(() => 0.5 - Math.random()).slice(0, 15);
       
       let isMounted = true;
       const fetchValidItems = async () => {
-        const validItems = [];
-        for (const item of shuffled) {
-          if (validItems.length >= 7) break; // keep up to 7 hero items
-          
-          if (item._type === 'live') {
-            validItems.push({ ...item, tmdbData: null });
-            continue;
-          }
-
+        const tmdbPromises = shuffled.map(async (item) => {
+          if (item._type === 'live') return { ...item, tmdbData: null };
           const tmdb = await getTmdbDetails(item, item._type);
-          if (tmdb && (tmdb.backdropUrl || tmdb.trailerKey)) {
-            validItems.push({ ...item, tmdbData: tmdb });
-          }
-        }
+          return { ...item, tmdbData: tmdb };
+        });
+
+        const results = await Promise.all(tmdbPromises);
+        const validItems = results.filter(r => r._type === 'live' || (r.tmdbData && (r.tmdbData.backdropUrl || r.tmdbData.trailerKey))).slice(0, 7);
+
         if (isMounted && validItems.length > 0) {
           setHeroItems(validItems);
           setHeroIndex(0);
-        }
-        if (isMounted && onHeroReady) {
-          onHeroReady();
+          
+          const firstItem = validItems[0];
+          const bgImg = firstItem.tmdbData?.backdropUrl || firstItem.stream_icon || firstItem.cover;
+          if (bgImg) {
+            const img = new Image();
+            img.onload = () => { if (isMounted && onHeroReady) onHeroReady(); };
+            img.onerror = () => { if (isMounted && onHeroReady) onHeroReady(); };
+            img.src = bgImg;
+          } else {
+            if (isMounted && onHeroReady) onHeroReady();
+          }
+        } else {
+          if (isMounted && onHeroReady) onHeroReady();
         }
       };
       
@@ -171,38 +183,57 @@ export default function Home({
     return () => clearInterval(interval);
   }, [heroItems, isVideoPlaying]);
 
+  const ytPlayerRef = useRef(null);
+  const [showTrailer, setShowTrailer] = useState(false);
+
   useEffect(() => {
     setIsVideoPlaying(false);
+    setShowTrailer(false);
+    let timer;
     if (tmdbData?.trailerKey) {
-      const timer = setTimeout(() => {
-        setIsVideoPlaying(true);
+      timer = setTimeout(() => {
+        setShowTrailer(true);
       }, 3000);
-      return () => clearTimeout(timer);
     }
+    return () => {
+      clearTimeout(timer);
+      try {
+        if (ytPlayerRef.current && ytPlayerRef.current.pauseVideo) {
+          ytPlayerRef.current.pauseVideo();
+        }
+      } catch(e) {}
+    };
   }, [heroIndex, tmdbData]);
 
   useEffect(() => {
+    let isVideoPaused = false;
     const handleScroll = () => {
-      if (ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
         if (window.scrollY > 300) {
-          ytPlayer.pauseVideo();
+          if (!isVideoPaused) {
+            ytPlayerRef.current.pauseVideo();
+            isVideoPaused = true;
+          }
         } else {
-          ytPlayer.playVideo();
+          if (isVideoPaused) {
+            ytPlayerRef.current.playVideo();
+            isVideoPaused = false;
+          }
         }
       }
     };
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [ytPlayer]);
+  }, []);
 
   const toggleMute = () => {
-    if (ytPlayer && typeof ytPlayer.isMuted === 'function') {
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.isMuted === 'function') {
       try {
-        if (ytPlayer.isMuted()) {
-          ytPlayer.unMute();
+        if (ytPlayerRef.current.isMuted()) {
+          ytPlayerRef.current.unMute();
           setIsMuted(false);
         } else {
-          ytPlayer.mute();
+          ytPlayerRef.current.mute();
           setIsMuted(true);
         }
       } catch (e) {
@@ -315,6 +346,14 @@ export default function Home({
 
   const isCollections = currentTab === 'collections';
 
+  const isArabicText = (text) => {
+    if (!text) return false;
+    return /[\u0600-\u06FF]/.test(text);
+  };
+  const isArabicTitle = heroItem ? isArabicText(heroItem.name) : false;
+  const titleFont = isArabicTitle ? "'Cairo', sans-serif" : "'Bebas Neue', sans-serif";
+  const titleSpacing = isArabicTitle ? "normal" : "2px";
+
   return (
     <div className="home-screen netflix-style">
       
@@ -330,12 +369,13 @@ export default function Home({
               className="hero-fade-in" 
               style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', zIndex: 1 }}
             />
-            {tmdbData?.trailerKey && (
+            {tmdbData?.trailerKey && showTrailer && (
               <YouTube
                 videoId={tmdbData.trailerKey}
                 opts={ytOpts}
                 onReady={(e) => {
                   setYtPlayer(e.target);
+                  ytPlayerRef.current = e.target;
                   if (isMuted) e.target.mute();
                   e.target.playVideo();
                 }}
@@ -346,7 +386,7 @@ export default function Home({
                     setIsVideoPlaying(false);
                     nextSlide({stopPropagation: () => {}}); 
                   } else if (e.data === YouTube.PlayerState.PAUSED) {
-                    setIsVideoPlaying(false);
+                    // Do nothing on pause
                   }
                 }}
                 onError={(e) => {
@@ -382,15 +422,29 @@ export default function Home({
               {heroItem._type === 'vod' ? 'MOVIES' : (heroItem._type === 'series' ? 'SERIES' : 'LIVE')}
             </div>
             
-            <h1 style={{fontSize: '3rem', fontWeight: '800', color: '#fff', textShadow: '2px 2px 4px rgba(0,0,0,0.8)', margin: '16px 0', maxWidth: '60%'}}>
+            <h1 style={{
+              fontSize: '4.5rem', 
+              fontWeight: '800', 
+              color: '#fff', 
+              textShadow: '2px 2px 4px rgba(0,0,0,0.8)', 
+              margin: '16px 0', 
+              maxWidth: '80%',
+              fontFamily: titleFont,
+              letterSpacing: titleSpacing,
+              textTransform: isArabicTitle ? 'none' : 'uppercase',
+              lineHeight: '1.1'
+            }}>
               {heroItem.name}
             </h1>
             
             <div className="hero-meta-info">
               <span className="imdb-badge-large">IMDb</span>
-              <span className="rating">{heroItem.rating || '9.5'}</span>
-              <span className="year">{heroItem.year || heroItem.added?.substring(0,4) || '2023'}</span>
-              <span className="match">100% match</span>
+              <span className="rating">{(() => {
+                const ir = parseFloat(heroItem.rating);
+                if (!isNaN(ir) && ir > 0) return ir.toFixed(1);
+                return tmdbData?.rating || 'N/A';
+              })()}</span>
+              <span className="year">{tmdbData?.year || heroItem.year || '2023'}</span>
             </div>
             
             <p className="hero-synopsis">

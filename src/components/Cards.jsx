@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Plus, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useDownloads } from '../contexts/DownloadsContext';
+import { buildXtreamApiUrl, buildXtreamHostApiUrl } from '../services/xtream';
 import './Cards.css';
 
 // Global cache and queue for metadata
@@ -26,12 +27,18 @@ const processMetaQueue = async () => {
 
     try {
       const action = type === 'series' ? 'get_series_info' : 'get_vod_info';
-      const idParam = type === 'series' ? `&series_id=${id}` : `&vod_id=${id}`;
-      const url = `${xtreamData.server_url}/player_api.php?username=${xtreamData.username}&password=${xtreamData.password}&action=${action}${idParam}`;
-      
+      const params = type === 'series' ? { series_id: id } : { vod_id: id };
+      const server = {
+        host: xtreamData.server_url,
+        proxy: import.meta.env?.VITE_PROXY_URL || 'http://localhost:5000/api/proxy',
+        user: xtreamData.username,
+        pass: xtreamData.password
+      };
+      const url = buildXtreamApiUrl(server, action, params);
       let res;
       if (window.electronAPI) {
-        res = await window.electronAPI.fetchApi(url);
+        const hostUrl = buildXtreamHostApiUrl(server, action, params);
+        res = await window.electronAPI.fetchApi(hostUrl);
       } else {
         const response = await fetch(url);
         res = await response.json();
@@ -106,7 +113,7 @@ const CardMeta = ({ item, type, xtreamData }) => {
   return <span ref={ref} className="extra">{metaText || (type === 'series' ? 'Series' : 'Movie')}</span>;
 };
 
-export function UniversalCard({ item, onClick, renderActions }) {
+export const UniversalCard = React.memo(function UniversalCard({ item, onClick, renderActions }) {
   const { activeProfile, toggleCollection, user } = useAuth();
   const { getDownloadState } = useDownloads();
   const xtreamData = user?.xtreamData;
@@ -121,7 +128,7 @@ export function UniversalCard({ item, onClick, renderActions }) {
   const inCollection = activeProfile?.library?.some(l => l.stream_id === streamId && l.in_collection);
 
   return (
-    <div className="netflix-universal-card" onClick={() => onClick(item)}>
+    <div className="netflix-universal-card" onClick={() => onClick(item, item._type)}>
       <div className="u-card-image-wrapper">
         <img src={imageSrc} alt={item.name} loading="lazy" onError={(e) => { e.target.src = 'https://placehold.co/250x350/111111/FFFFFF?text=No+Image' }} />
       </div>
@@ -179,4 +186,4 @@ export function UniversalCard({ item, onClick, renderActions }) {
       </div>
     </div>
   );
-}
+});

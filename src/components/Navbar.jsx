@@ -15,7 +15,8 @@ export default function Navbar({
   currentView,
   onMyListClick,
   onCollectionsClick,
-  onDownloadsClick
+  onDownloadsClick,
+  isOfflineMode
 }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [hoveredMenu, setHoveredMenu] = useState(null);
@@ -42,6 +43,7 @@ export default function Navbar({
   }, []);
 
   const handleCategorySelect = (tab, catId) => {
+    if (isOfflineMode && tab !== 'downloads' && tab !== 'account') return;
     setCurrentTab(tab);
     setCurrentCategoryId(catId);
     setHoveredMenu(null);
@@ -87,27 +89,27 @@ export default function Navbar({
   return (
     <nav className={`netflix-navbar ${isScrolled ? 'scrolled' : ''}`}>
       <div className="navbar-left">
-        <h1 onClick={() => handleCategorySelect('home', 'all')} style={{ color: '#E50914', fontSize: '22px', fontWeight: '900', cursor: 'pointer', fontFamily: 'Arial Black, Impact, sans-serif' }}>
+        <h1 onClick={() => { if(!isOfflineMode) handleCategorySelect('home', 'all'); }} style={{ color: '#E50914', fontSize: '22px', fontWeight: '900', cursor: 'pointer', fontFamily: 'Arial Black, Impact, sans-serif' }}>
           IPTV PREMIUM
         </h1>
         <ul className="navbar-links">
-          <li className={currentTab === 'home' ? 'active' : ''} onClick={() => handleCategorySelect('home', 'all')}>Home</li>
+          {!isOfflineMode && <li className={currentTab === 'home' && currentView === 'home' ? 'active' : ''} onClick={() => handleCategorySelect('home', 'all')}>Home</li>}
           
-          {user?.planId !== 'sports' && (
+          {!isOfflineMode && user?.planId !== 'sports' && (
             <li 
-              className={`has-dropdown ${currentTab === 'series' ? 'active' : ''}`} 
+              className={`has-dropdown ${currentTab === 'series' && currentView === 'home' ? 'active' : ''}`} 
               onMouseEnter={() => setHoveredMenu('series')}
               onMouseLeave={() => setHoveredMenu(null)}
               onClick={() => handleCategorySelect('series', 'all')}
             >
-              TV Shows
+              Series
               {hoveredMenu === 'series' && renderMegaMenu('series', seriesCategories)}
             </li>
           )}
           
-          {user?.planId !== 'sports' && (
+          {!isOfflineMode && user?.planId !== 'sports' && (
             <li 
-              className={`has-dropdown ${currentTab === 'vod' ? 'active' : ''}`}
+              className={`has-dropdown ${currentTab === 'vod' && currentView === 'home' ? 'active' : ''}`} 
               onMouseEnter={() => setHoveredMenu('vod')}
               onMouseLeave={() => setHoveredMenu(null)}
               onClick={() => handleCategorySelect('vod', 'all')}
@@ -116,10 +118,10 @@ export default function Navbar({
               {hoveredMenu === 'vod' && renderMegaMenu('vod', vodCategories)}
             </li>
           )}
-          
-          {user?.planId !== 'basic' && (
+
+          {!isOfflineMode && user?.planId !== 'basic' && (
             <li 
-              className={`has-dropdown ${currentTab === 'live' ? 'active' : ''}`}
+              className={`has-dropdown ${currentTab === 'live' && currentView === 'home' ? 'active' : ''}`} 
               onMouseEnter={() => setHoveredMenu('live')}
               onMouseLeave={() => setHoveredMenu(null)}
               onClick={() => handleCategorySelect('live', 'all')}
@@ -129,8 +131,8 @@ export default function Navbar({
             </li>
           )}
           
-          <li className={currentView === 'mylist' ? 'active' : ''} onClick={onMyListClick}>My list</li>
-          <li className={currentView === 'collections' ? 'active' : ''} onClick={onCollectionsClick}>Collections</li>
+          {!isOfflineMode && <li className={currentView === 'mylist' ? 'active' : ''} onClick={onMyListClick}>My List</li>}
+          {!isOfflineMode && <li className={currentView === 'collections' ? 'active' : ''} onClick={onCollectionsClick}>Collections</li>}
           <li className={currentView === 'downloads' ? 'active' : ''} onClick={onDownloadsClick}>Downloads</li>
         </ul>
       </div>

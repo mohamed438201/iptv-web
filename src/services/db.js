@@ -6,6 +6,14 @@ export const PLANS = {
 
 const API_URL = 'http://localhost:5000/api';
 
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('iptv_auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 export const loginUser = async (email, password) => {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: 'POST',
@@ -14,6 +22,7 @@ export const loginUser = async (email, password) => {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
+  localStorage.setItem('iptv_auth_token', data.token);
   return getUserById(data.id);
 };
 
@@ -25,17 +34,18 @@ export const registerUser = async (email, password, phone) => {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Registration failed');
+  localStorage.setItem('iptv_auth_token', data.token);
   return getUserById(data.id);
 };
 
 export const getUserById = async (userId) => {
-  const res = await fetch(`${API_URL}/users/${userId}`);
+  const res = await fetch(`${API_URL}/users/${userId}`, { headers: getAuthHeaders() });
   if (!res.ok) return null;
   return await res.json();
 };
 
 export const getAllUsers = async () => {
-  const res = await fetch(`${API_URL}/users`);
+  const res = await fetch(`${API_URL}/users`, { headers: getAuthHeaders() });
   if (!res.ok) return [];
   return await res.json();
 };
@@ -44,7 +54,7 @@ export const approveSubscription = async (userId) => {
   const newEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ 
       payment_status: 'active',
       subscription_end_date: newEnd.toISOString()
@@ -55,7 +65,7 @@ export const approveSubscription = async (userId) => {
 export const rejectSubscription = async (userId) => {
   await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ payment_status: null, plan_id: null })
   });
 };
@@ -63,7 +73,7 @@ export const rejectSubscription = async (userId) => {
 export const banUser = async (userId) => {
   await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ payment_status: 'banned' })
   });
 };
@@ -77,7 +87,7 @@ export const renewSubscription = async (userId) => {
   
   await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ subscription_end_date: newEnd.toISOString() })
   });
 };
@@ -91,7 +101,7 @@ export const updateUserByAdmin = async (userId, updates) => {
   
   await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(dbUpdates)
   });
 };
@@ -111,7 +121,7 @@ export const setPlan = async (userId, planId, paymentStatus, receiptImage = null
   
   const res = await fetch(`${API_URL}/users/${userId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(updates)
   });
   
@@ -126,7 +136,7 @@ export const setPlan = async (userId, planId, paymentStatus, receiptImage = null
 export const verifyPromoCode = async (code) => {
   const res = await fetch(`${API_URL}/promo/verify`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ code })
   });
   const data = await res.json();
@@ -137,7 +147,7 @@ export const verifyPromoCode = async (code) => {
 export const addProfile = async (userId, name, avatar) => {
   await fetch(`${API_URL}/profiles`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ user_id: userId, name, avatar })
   });
 };
@@ -145,14 +155,15 @@ export const addProfile = async (userId, name, avatar) => {
 export const updateProfile = async (userId, profileId, updates) => {
   await fetch(`${API_URL}/profiles/${profileId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(updates)
   });
 };
 
 export const deleteProfile = async (userId, profileId) => {
   await fetch(`${API_URL}/profiles/${profileId}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    headers: getAuthHeaders()
   });
 };
 
@@ -168,7 +179,7 @@ export const saveContinueWatching = async (userId, profileId, item, progress, du
 
   await fetch(`${API_URL}/watch-history`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       profile_id: profileId,
       stream_id: streamId,
@@ -195,7 +206,7 @@ export const subscribeToUser = (userId, profileIds = [], callback) => {
 export const dbToggleRating = async (profileId, streamId, item, rating) => {
   const res = await fetch(`${API_URL}/library/toggle-rating`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ profile_id: profileId, stream_id: streamId, item, rating })
   });
   if (!res.ok) throw new Error('Failed to toggle rating');
@@ -205,7 +216,7 @@ export const dbToggleRating = async (profileId, streamId, item, rating) => {
 export const dbToggleCollection = async (profileId, streamId, item) => {
   const res = await fetch(`${API_URL}/library/toggle-collection`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ profile_id: profileId, stream_id: streamId, item })
   });
   if (!res.ok) throw new Error('Failed to toggle collection');

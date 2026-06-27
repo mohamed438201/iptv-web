@@ -2,14 +2,17 @@ import React from 'react';
 import { Play, Trash2, HardDrive, Download, AlertCircle, X, Pause, Folder } from 'lucide-react';
 import { UniversalCard } from './Cards';
 import { useDownloads } from '../contexts/DownloadsContext';
+import { useDialog } from '../contexts/DialogContext';
 import './Downloads.css';
 
 export default function Downloads({ onItemSelect }) {
   const { downloads, pauseDownload, resumeDownload, removeDownload } = useDownloads();
+  const { confirm } = useDialog();
 
   const handleRemove = async (id, e) => {
     e.stopPropagation();
-    if (window.confirm('Are you sure you want to cancel/delete this download?')) {
+    const isConfirmed = await confirm('Are you sure you want to cancel/delete this download?');
+    if (isConfirmed) {
       await removeDownload(id);
     }
   };
@@ -60,8 +63,21 @@ export default function Downloads({ onItemSelect }) {
   const completedDownloads = downloadsList.filter(d => d.status === 'completed');
   const errorDownloads = downloadsList.filter(d => d.status === 'error');
 
+  const isOffline = !navigator.onLine;
+
   return (
     <div className="downloads-page">
+      {isOffline && (
+        <div style={{ background: 'linear-gradient(90deg, #E50914, #ff4b4b)', color: 'white', padding: '16px 24px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 4px 15px rgba(229, 9, 20, 0.4)' }}>
+          <div style={{ background: 'rgba(255,255,255,0.2)', padding: '12px', borderRadius: '50%' }}>
+            <Download size={28} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>You are Offline</h2>
+            <p style={{ margin: '4px 0 0 0', opacity: 0.9 }}>Enjoy your downloaded movies and shows without an internet connection.</p>
+          </div>
+        </div>
+      )}
       <div className="downloads-header">
         <h1>My Downloads</h1>
         <p>Watch your downloaded movies and TV shows offline.</p>
@@ -80,67 +96,65 @@ export default function Downloads({ onItemSelect }) {
               <h2 className="section-title">Downloading & Paused</h2>
               <div className="active-downloads-list">
                 {[...activeDownloads, ...errorDownloads].map(item => (
-                  <div key={item.id} className="active-download-card">
-                    <img 
-                      src={item.poster || 'https://placehold.co/256x384/111/fff?text=No+Image'} 
-                      alt={item.title} 
-                      className="active-dl-thumb"
-                      onError={(e) => { e.target.src = 'https://placehold.co/256x384/111/fff?text=No+Image'; }}
-                    />
-                    <div className="active-dl-info">
-                      <h3 className="active-dl-title">{item.title || item.name}</h3>
-                      <div className="active-dl-meta">
-                        <span>
-                          {formatBytes(item.downloadedBytes)} of {formatBytes(item.totalBytes)}
-                          {item.isHls && item.totalBytes === 0 ? ' (Calculating...)' : ''}
-                        </span>
-                        {item.status === 'error' ? (
-                          <span style={{ color: '#ff3b30' }}>Failed</span>
-                        ) : item.status === 'paused' ? (
-                          <span style={{ color: '#ff9500' }}>Paused ({Math.round(item.progress || 0)}%)</span>
-                        ) : (
-                          <span className="active-dl-percentage">{Math.round(item.progress || 0)}%</span>
-                        )}
-                      </div>
-                      <div className="progress-track">
-                        <div 
-                          className="progress-fill" 
-                          style={{ 
-                            width: `${item.progress || 0}%`,
-                            background: item.status === 'error' ? '#ff3b30' : item.status === 'paused' ? '#ff9500' : undefined
-                          }}
-                        ></div>
-                      </div>
-                    </div>
+                  <div key={item.id} className="active-download-card-v2">
+                    <div 
+                      className="active-dl-v2-bg" 
+                      style={{ backgroundImage: `url(${item.poster || 'https://placehold.co/256x384/111/fff?text=No+Image'})` }}
+                    ></div>
+                    <div className="active-dl-v2-overlay"></div>
                     
-                    <div className="active-dl-actions" style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        className="pause-resume-btn" 
-                        onClick={(e) => handlePauseResume(item, e)} 
-                        title={item.status === 'downloading' ? 'Pause' : 'Resume'}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          color: '#fff',
-                          padding: '10px',
-                          borderRadius: '50%',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {item.status === 'downloading' ? <Pause size={20} fill="white" /> : <Play size={20} fill="white" />}
-                      </button>
+                    <div className="active-dl-v2-content">
+                      <img 
+                        src={item.poster || 'https://placehold.co/256x384/111/fff?text=No+Image'} 
+                        alt={item.title} 
+                        className="active-dl-v2-poster"
+                        onError={(e) => { e.target.src = 'https://placehold.co/256x384/111/fff?text=No+Image'; }}
+                      />
                       
-                      <button 
-                        className="cancel-btn" 
-                        onClick={(e) => handleRemove(item.id, e)} 
-                        title="Cancel Download"
-                      >
-                        <X size={24} />
-                      </button>
+                      <div className="active-dl-v2-body">
+                        <div className="active-dl-v2-header">
+                          <h3 className="active-dl-v2-title">{item.title || item.name}</h3>
+                          <span className={`active-dl-v2-status ${item.status}`}>
+                            {item.status === 'error' ? 'Failed' : item.status === 'paused' ? 'Paused' : 'Downloading'}
+                          </span>
+                        </div>
+                        
+                        <div className="active-dl-v2-progress-section">
+                          <div className="active-dl-v2-progress-text">
+                            <span className="v2-bytes">
+                              {formatBytes(item.downloadedBytes)} / {formatBytes(item.totalBytes)}
+                              {item.isHls && item.totalBytes === 0 ? ' (Calculating...)' : ''}
+                            </span>
+                            <span className="v2-percentage">
+                              {Math.round(item.progress || 0)}%
+                            </span>
+                          </div>
+                          <div className="v2-progress-track">
+                            <div 
+                              className={`v2-progress-fill ${item.status}`} 
+                              style={{ width: `${item.progress || 0}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="active-dl-v2-actions">
+                        <button 
+                          className="v2-btn-action primary-action" 
+                          onClick={(e) => handlePauseResume(item, e)} 
+                          title={item.status === 'downloading' ? 'Pause' : 'Resume'}
+                        >
+                          {item.status === 'downloading' ? <Pause size={22} fill="white" /> : <Play size={22} fill="white" />}
+                        </button>
+                        
+                        <button 
+                          className="v2-btn-action danger-action" 
+                          onClick={(e) => handleRemove(item.id, e)} 
+                          title="Cancel Download"
+                        >
+                          <X size={24} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

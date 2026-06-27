@@ -13,9 +13,12 @@ import AdminDashboard from './components/AdminDashboard';
 import MyList from './components/MyList';
 import Collections from './components/Collections';
 import Downloads from './components/Downloads';
+import AutoUpdater from './components/AutoUpdater';
+import WindowControls from './components/WindowControls';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Home as HomeIcon, Search, MonitorPlay, Film, Tv } from 'lucide-react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { buildXtreamApiUrl, buildXtreamStreamUrl, buildXtreamHostApiUrl } from './services/xtream';
 
 export default function App() {
   const { user, activeProfile, logout, refreshUser } = useAuth();
@@ -53,7 +56,7 @@ export default function App() {
 
   // OTA States
   const [updateMessage, setUpdateMessage] = useState(null);
-  const [updateProgress, setUpdateProgress] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
 
   // Offline Mode State
   const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
@@ -62,7 +65,7 @@ export default function App() {
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
   
   // Only the specified server
-  const SERVER = { host: 'http://xc.nv2.xyz:80', user: 'gamila2026', pass: 'gamila2026', proxy: '/nv2' };
+  const SERVER = { host: 'http://b1718o.top:80', user: '2366901490', pass: '7312171749', proxy: '/b17' };
 
   const fetchedPlanRef = React.useRef(null);
 
@@ -285,23 +288,15 @@ export default function App() {
   }, [currentView, selectedItem, playingItem]);
 
   const fetchData = async (action, params = {}) => {
-    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    let query = `player_api.php?username=${SERVER.user}&password=${SERVER.pass}&action=${action}`;
-    
-    for (const key in params) {
-      query += `&${key}=${params[key]}`;
-    }
+    const finalUrl = buildXtreamApiUrl(SERVER, action, params);
 
     if (window.electronAPI && window.electronAPI.fetchApi) {
-      const fullUrl = `${SERVER.host}/${query}`;
+      // Electron needs the host url directly, our helper returns proxy or host based on environment
+      const fullUrl = buildXtreamHostApiUrl(SERVER, action, params);
       const res = await window.electronAPI.fetchApi(fullUrl);
       if (!res.ok) throw new Error(`Server Error: ${res.status} ${res.error || ''}`);
       return res.data;
     }
-
-    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
-    const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
-    const finalUrl = `${baseUrl}/${query}`;
     
     const response = await fetch(finalUrl);
     if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
@@ -364,17 +359,7 @@ export default function App() {
   };
 
   const generatePlayUrl = (streamId, type = 'live', extension = 'm3u8') => {
-    const path = type === 'live' ? 'live' : (type === 'movie' ? 'movie' : 'series');
-    const queryPath = `/${path}/${SERVER.user}/${SERVER.pass}/${streamId}.${extension}`;
-
-    const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    // Always use proxy in dev to avoid CORS and HTTPS upgrade issues
-    const useProxy = isDev;
-    
-    const baseUrl = useProxy ? SERVER.proxy : SERVER.host;
-    return `${baseUrl}${queryPath}`;
+    return buildXtreamStreamUrl(SERVER, type, streamId, extension);
   };
 
   const handleSelect = async (item, type) => {
@@ -573,6 +558,7 @@ export default function App() {
           onMyListClick={() => navigate('/mylist')}
           onCollectionsClick={() => navigate('/collections')}
           onDownloadsClick={() => navigate('/downloads')}
+          isOfflineMode={isOfflineMode}
         />
       )}
 
@@ -587,14 +573,7 @@ export default function App() {
       )}
 
       <main className="app-main-content">
-        {updateMessage && !isOfflineMode && (
-          <div className="update-banner" style={{ position: 'absolute', top: 0, left: 0, right: 0, background: 'rgba(229, 9, 20, 0.9)', color: 'white', padding: '12px', textAlign: 'center', zIndex: 9999, fontSize: '13px', fontWeight: 'bold', backdropFilter: 'blur(10px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ flex: 1 }}>
-              {updateMessage} {updateProgress !== null ? `${updateProgress}%` : ''}
-            </div>
-            <button onClick={() => setUpdateMessage(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px', padding: '0 8px' }}>✕</button>
-          </div>
-        )}
+        <AutoUpdater />
         
         {currentView === 'home' && !isOfflineMode && (
           <Home 
@@ -655,6 +634,7 @@ export default function App() {
           <Downloads onItemSelect={(item, type) => handleSelect(item, type)} />
         )}
       </main>
+      <WindowControls />
     </div>
     </>
   );

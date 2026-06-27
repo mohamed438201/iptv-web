@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// TODO: Replace with your actual TMDB API key
-export const TMDB_API_KEY = '2158f4f6657eaaf67d6f140fa9971124';
+// Replace with your actual TMDB API key in .env file
+export const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 const tmdbApi = axios.create({
@@ -37,9 +37,9 @@ export const getTmdbDetails = async (item, type = 'vod') => {
 
     if (!tmdbId) return null;
 
-    // 2. Fetch details (including videos)
+    // 2. Fetch details (including videos, credits, ratings)
     const detailsRes = await tmdbApi.get(`/${mediaType}/${tmdbId}`, {
-      params: { append_to_response: 'videos,images', language: 'en-US' }, // fallback to en for better images/videos
+      params: { append_to_response: 'videos,images,credits,release_dates,content_ratings', language: 'en-US' }, // fallback to en for better images/videos
     });
 
     const data = detailsRes.data;
@@ -52,14 +52,59 @@ export const getTmdbDetails = async (item, type = 'vod') => {
       if (trailer) trailerKey = trailer.key;
     }
 
-    // Get backdrop
+    // Get backdrop and poster
     const backdropPath = data.backdrop_path || data.belongs_to_collection?.backdrop_path;
     const backdropUrl = backdropPath ? `https://image.tmdb.org/t/p/original${backdropPath}` : null;
     
+    // Extract year
+    const releaseDate = data.release_date || data.first_air_date;
+    const year = releaseDate ? releaseDate.substring(0, 4) : null;
+    
+    // Extract rating
+    const rating = data.vote_average ? data.vote_average.toFixed(1) : null;
+
+    // Extract Cast, Director, Writer
+    let cast = null;
+    let director = null;
+    let writer = null;
+    if (data.credits) {
+      if (data.credits.cast) {
+        cast = data.credits.cast.slice(0, 4).map(c => c.name).join(', ');
+      }
+      if (data.credits.crew) {
+        const dir = data.credits.crew.find(c => c.job === 'Director');
+        if (dir) director = dir.name;
+        
+        const writ = data.credits.crew.find(c => c.department === 'Writing' || c.job === 'Writer' || c.job === 'Screenplay');
+        if (writ) writer = writ.name;
+      }
+    }
+
+    // Extract Age Rating
+    let ageRating = null;
+    if (isMovie && data.release_dates?.results) {
+      const usRelease = data.release_dates.results.find(r => r.iso_3166_1 === 'US');
+      if (usRelease && usRelease.release_dates.length > 0) {
+        ageRating = usRelease.release_dates[0].certification;
+      }
+    } else if (!isMovie && data.content_ratings?.results) {
+      const usRating = data.content_ratings.results.find(r => r.iso_3166_1 === 'US');
+      if (usRating) {
+        ageRating = usRating.rating;
+      }
+    }
+
     return {
       backdropUrl,
+      poster_path: data.poster_path,
       trailerKey,
       tmdbId,
+      year,
+      rating,
+      cast,
+      director,
+      writer,
+      ageRating: ageRating || '16+',
       overview: data.overview || item.overview
     };
 

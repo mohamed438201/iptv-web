@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Play, Bookmark, Share, Loader2, ArrowRight, ThumbsUp, ThumbsDown, Plus, Check, Download } from 'lucide-react';
 import { getTmdbDetails } from '../services/tmdb';
 import { useAuth } from '../contexts/AuthContext';
 import { useDownloads } from '../contexts/DownloadsContext';
+import { buildXtreamApiUrl, buildXtreamStreamUrl, buildXtreamHostStreamUrl, getBaseUrl } from '../services/xtream';
 import './ChannelDetail.css';
 
 export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const { activeProfile, toggleRating, toggleCollection } = useAuth();
-  const { getDownloadState, startDownload, pauseDownload } = useDownloads();
+  const { downloads, getDownloadState, startDownload, pauseDownload } = useDownloads();
   const [seriesInfo, setSeriesInfo] = useState(null);
   const [vodInfo, setVodInfo] = useState(null);
+  const [isHeroDlHovered, setIsHeroDlHovered] = useState(false);
   const [episodes, setEpisodes] = useState([]);
   const [seasons, setSeasons] = useState({});
   const [selectedSeason, setSelectedSeason] = useState(null);
@@ -41,11 +43,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const fetchSeriesInfo = async () => {
     setLoading(true);
     try {
-      const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-      const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
-      const baseUrl = useProxy ? server.proxy : server.host;
-      const url = `${baseUrl}/player_api.php?username=${server.user}&password=${server.pass}&action=get_series_info&series_id=${item.series_id}`;
+      const url = buildXtreamApiUrl(server, 'get_series_info', { series_id: item.series_id });
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -68,11 +66,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const fetchVodInfo = async () => {
     setLoading(true);
     try {
-      const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-      const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
-      const baseUrl = useProxy ? server.proxy : server.host;
-      const url = `${baseUrl}/player_api.php?username=${server.user}&password=${server.pass}&action=get_vod_info&vod_id=${item.stream_id}`;
+      const url = buildXtreamApiUrl(server, 'get_vod_info', { vod_id: item.stream_id });
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -86,9 +80,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
 
   if (!item) return null;
 
-  const backdropSrc = tmdbData?.backdrop_path 
-    ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` 
-    : '';
+  const backdropSrc = tmdbData?.backdropUrl || '';
 
   const posterSrc = tmdbData?.poster_path 
     ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}` 
@@ -101,11 +93,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   };
 
   const handlePlayEpisode = (ep) => {
-    const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-    const isDev = import.meta.env?.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const useProxy = !isNativeApp || (isNativeApp && isDev && !window.Capacitor);
-    const baseUrl = useProxy ? server.proxy : server.host;
-    const playUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ep.container_extension || 'mp4'}`;
+    const playUrl = buildXtreamStreamUrl(server, 'series', ep.id, ep.container_extension || 'mp4');
     const enhancedItem = {
       ...ep,
       url: playUrl,
@@ -141,8 +129,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
     }
 
     let ext = item.container_extension || 'mp4';
-    const baseUrl = server.host;
-    const downloadUrl = `${baseUrl}/movie/${server.user}/${server.pass}/${item.stream_id}.${ext}`;
+    const downloadUrl = buildXtreamHostStreamUrl(server, 'movie', item.stream_id, ext);
     
     startDownload({
       ...item,
@@ -173,8 +160,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
       return;
     }
 
-    const baseUrl = server.host;
-    const downloadUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ep.container_extension || 'mp4'}`;
+    const downloadUrl = buildXtreamHostStreamUrl(server, 'series', ep.id, ep.container_extension || 'mp4');
     
     startDownload({
       ...ep,
@@ -201,8 +187,7 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
         if (dlState) return; // already downloaded/downloading
 
         let ext = ep.container_extension || 'mp4';
-        const baseUrl = server.host;
-        const downloadUrl = `${baseUrl}/series/${server.user}/${server.pass}/${ep.id}.${ext}`;
+        const downloadUrl = buildXtreamHostStreamUrl(server, 'series', ep.id, ext);
         
         startDownload({
           ...ep,
@@ -240,8 +225,16 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   };
 
   const plot = tmdbData?.overview || seriesInfo?.plot || vodInfo?.plot || item.plot || 'No description available.';
-  const rating = tmdbData?.vote_average ? tmdbData.vote_average.toFixed(1) : (item.rating || null);
-  const year = tmdbData?.release_date?.substring(0,4) || tmdbData?.first_air_date?.substring(0,4) || vodInfo?.releasedate || item.year || '';
+  const rating = (() => {
+    const ir = parseFloat(item.rating);
+    if (!isNaN(ir) && ir > 0) return ir.toFixed(1);
+    return tmdbData?.rating || null;
+  })();
+  const year = tmdbData?.year || vodInfo?.releasedate || item.year || '';
+  const director = tmdbData?.director || vodInfo?.director;
+  const writer = tmdbData?.writer || null;
+  const cast = tmdbData?.cast || vodInfo?.cast;
+  const ageRating = tmdbData?.ageRating || '16+';
 
   const titleText = item.name || item.title || item.name;
   const isArabicText = (text) => {
@@ -252,14 +245,48 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
   const titleFont = isArabic ? "'Cairo', sans-serif" : "'Bebas Neue', sans-serif";
   const titleSpacing = isArabic ? "normal" : "2px";
 
+  const containerRef = React.useRef(null);
+  const bgRef = React.useRef(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!containerRef.current || !bgRef.current) return;
+      const scrollY = containerRef.current.scrollTop;
+      const blurValue = Math.min(scrollY / 40, 15); // blur up to 15px
+      const dimValue = Math.max(1 - (scrollY / 500), 0.4); // dim brightness down to 0.4
+      bgRef.current.style.filter = `blur(${blurValue}px) brightness(${dimValue})`;
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
+
+  const seriesEpisodeIds = useMemo(() => {
+    const ids = new Set();
+    Object.values(seasons).forEach(season => {
+      season.forEach(ep => ids.add(String(ep.id)));
+    });
+    return ids;
+  }, [seasons]);
+
+  const activeSeriesDownloads = useMemo(() => {
+    return Object.values(downloads || {}).filter(d => 
+      seriesEpisodeIds.has(String(d.id)) && 
+      (d.status === 'downloading' || d.status === 'paused')
+    );
+  }, [downloads, seriesEpisodeIds]);
+
   return (
-    <div className="netflix-detail-screen">
+    <div className="netflix-detail-screen" ref={containerRef}>
       {/* Background Hero Layer */}
       <div className="detail-hero-bg">
         {backdropSrc ? (
-          <img src={backdropSrc} alt="bg" className="backdrop-img" />
+          <img src={backdropSrc} alt="bg" className="backdrop-img" ref={bgRef} style={{ transition: 'filter 0.1s ease-out' }} />
         ) : (
-          <img src={posterSrc} alt="bg" className="fallback-bg-img" onError={handleImageError} />
+          <img src={posterSrc} alt="bg" className="fallback-bg-img" onError={handleImageError} ref={bgRef} style={{ transition: 'filter 0.1s ease-out' }} />
         )}
         <div className="detail-vignette"></div>
       </div>
@@ -280,9 +307,8 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
             </h1>
             
             <div className="detail-metadata">
-              <span className="match-score">100% Match</span>
               {year && <span className="meta-year">{year}</span>}
-              <span className="meta-age">16+</span>
+              <span className="meta-age">{ageRating}</span>
               <span className="meta-hd">HD</span>
               {rating && (
                 <span className="meta-rating" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -338,39 +364,75 @@ export default function ChannelDetail({ item, server, onBack, onPlay }) {
                 );
               })()}
               
-              <button className="btn-action-circle" title="Download" onClick={item.type === 'vod' ? handleDownloadVod : handleDownloadSeason} style={{ padding: 0 }}>
+              <button 
+                className="btn-action-circle" 
+                onClick={item.type === 'vod' ? handleDownloadVod : handleDownloadSeason} 
+                style={{ padding: 0, position: 'relative' }}
+                onMouseEnter={() => setIsHeroDlHovered(true)}
+                onMouseLeave={() => setIsHeroDlHovered(false)}
+              >
                 {(() => {
-                  const streamId = String(item?.stream_id || item?.id);
-                  const dlState = getDownloadState(streamId);
-                  if (item.type === 'vod' && dlState?.status === 'downloading') {
-                    return (
-                      <div style={{ position: 'relative', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
-                          <circle cx="22" cy="22" r="20" stroke="rgba(255,255,255,0.2)" strokeWidth="2" fill="none" />
-                          <circle cx="22" cy="22" r="20" stroke="#fff" strokeWidth="2" fill="none" strokeDasharray={125.6} strokeDashoffset={125.6 - (dlState.progress / 100) * 125.6} transform="rotate(-90 22 22)" style={{ transition: 'stroke-dashoffset 0.3s' }} />
-                        </svg>
-                        <div style={{ width: '12px', height: '12px', backgroundColor: '#fff', borderRadius: '2px' }} /> {/* Pause icon */}
-                      </div>
-                    );
+                  if (item.type === 'vod') {
+                    const streamId = String(item?.stream_id || item?.id);
+                    const dlState = getDownloadState(streamId);
+                    if (dlState?.status === 'downloading') {
+                      return (
+                        <div style={{ position: 'relative', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
+                            <circle cx="22" cy="22" r="20" stroke="rgba(255,255,255,0.2)" strokeWidth="2" fill="none" />
+                            <circle cx="22" cy="22" r="20" stroke="#fff" strokeWidth="2" fill="none" strokeDasharray={125.6} strokeDashoffset={125.6 - (dlState.progress / 100) * 125.6} transform="rotate(-90 22 22)" style={{ transition: 'stroke-dashoffset 0.3s' }} />
+                          </svg>
+                          <div style={{ width: '12px', height: '12px', backgroundColor: '#fff', borderRadius: '2px' }} />
+                          {isHeroDlHovered && (
+                            <div className="dl-tooltip" style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '12px', background: 'rgba(0,0,0,0.9)', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', whiteSpace: 'nowrap', zIndex: 100 }}>
+                              Downloading: {Math.round(dlState.progress || 0)}%
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (dlState?.status === 'paused') return <Play size={20} fill="white" />;
+                    if (dlState?.status === 'completed') return <Check size={24} className="icon-anim-check" />;
+                    return <Download size={24} />;
+                  } else {
+                    if (activeSeriesDownloads.length > 0) {
+                      const dlState = activeSeriesDownloads[0];
+                      const count = activeSeriesDownloads.length;
+                      return (
+                        <div style={{ position: 'relative', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', top: 0, left: 0 }}>
+                            <circle cx="22" cy="22" r="20" stroke="rgba(255,255,255,0.2)" strokeWidth="2" fill="none" />
+                            <circle cx="22" cy="22" r="20" stroke="#fff" strokeWidth="2" fill="none" strokeDasharray={125.6} strokeDashoffset={125.6 - (dlState.progress / 100) * 125.6} transform="rotate(-90 22 22)" style={{ transition: 'stroke-dashoffset 0.3s' }} />
+                          </svg>
+                          <div style={{ width: '12px', height: '12px', backgroundColor: '#fff', borderRadius: '2px' }} />
+                          {isHeroDlHovered && (
+                            <div className="dl-tooltip" style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '12px', background: 'rgba(0,0,0,0.9)', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', whiteSpace: 'nowrap', zIndex: 100 }}>
+                              {count > 1 ? `Downloading ${count} episodes...` : `Downloading S${dlState.season || '?'} E${dlState.episode_num || '?'}... ${Math.round(dlState.progress || 0)}%`}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return <Download size={24} />;
                   }
-                  if (item.type === 'vod' && dlState?.status === 'paused') {
-                    return <Play size={20} fill="white" />;
-                  }
-                  if (item.type === 'vod' && dlState?.status === 'completed') {
-                    return <Check size={24} className="icon-anim-check" />;
-                  }
-                  return <Download size={24} />;
                 })()}
               </button>
             </div>
 
-            {item.type === 'vod' && vodInfo && (
-              <div className="detail-cast-info">
-                {vodInfo.director && <p><span className="cast-label">Director:</span> {vodInfo.director}</p>}
-                {vodInfo.genre && <p><span className="cast-label">Genre:</span> {vodInfo.genre}</p>}
-                {vodInfo.cast && <p><span className="cast-label">Cast:</span> {vodInfo.cast}</p>}
-              </div>
-            )}
+            <div className="detail-cast-info" style={{ marginTop: '24px', color: '#a3a3a3', fontSize: '15px', lineHeight: '1.8', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {director && (
+                <div><strong style={{ color: '#fff' }}>Director:</strong> {director}</div>
+              )}
+              {writer && (
+                <div><strong style={{ color: '#fff' }}>Writer:</strong> {writer}</div>
+              )}
+              {(vodInfo?.genre || seriesInfo?.genre) && (
+                <div><strong style={{ color: '#fff' }}>Genre:</strong> {vodInfo?.genre || seriesInfo?.genre}</div>
+              )}
+              {cast && (
+                <div><strong style={{ color: '#fff' }}>Stars:</strong> {cast}</div>
+              )}
+            </div>
           </div>
 
           <div className="detail-hero-poster">

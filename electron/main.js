@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, session } from 'electron';
+import { app, BrowserWindow, dialog, session, ipcMain } from 'electron';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import path from 'path';
@@ -12,6 +12,11 @@ import { initDownloadManager, ENCRYPTION_KEY, ALGORITHM } from './downloadManage
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Allow video autoplay without user gesture
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-site-isolation-trials');
+app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
 
 // Initialize Backend Server with Remote DB Configuration
 process.env.DB_HOST = '135.125.196.203';
@@ -33,12 +38,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: 'rgba(0, 0, 0, 0)',
-      symbolColor: '#ffffff',
-      height: 32
-    },
+    frame: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -61,17 +61,44 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  ipcMain.removeAllListeners('minimize-window');
+  ipcMain.removeAllListeners('maximize-window');
+  ipcMain.removeAllListeners('close-window');
+
+  ipcMain.on('minimize-window', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+  
+  ipcMain.on('maximize-window', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+  
+  ipcMain.on('close-window', () => {
+    if (mainWindow) mainWindow.close();
+  });
+
   return mainWindow;
 }
 
 app.whenReady().then(async () => {
   // Inject VLC User-Agent globally and strip Origin/Referer for external URLs
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = 'VLC/3.0.18 LibVLC/3.0.18';
+    const url = details.url.toLowerCase();
+    const isYouTube = url.includes('youtube.com') || url.includes('googleapis.com') || url.includes('ytimg.com') || url.includes('googlevideo.com') || url.includes('doubleclick.net');
     
-    if (!details.url.startsWith('http://localhost') && !details.url.startsWith('http://127.0.0.1') && !details.url.startsWith('file://')) {
-      delete details.requestHeaders['Origin'];
-      delete details.requestHeaders['Referer'];
+    if (!isYouTube) {
+      details.requestHeaders['User-Agent'] = 'VLC/3.0.18 LibVLC/3.0.18';
+      
+      if (!url.startsWith('http://localhost') && !url.startsWith('http://127.0.0.1') && !url.startsWith('file://')) {
+        delete details.requestHeaders['Origin'];
+        delete details.requestHeaders['Referer'];
+      }
     }
     
     callback({ cancel: false, requestHeaders: details.requestHeaders });
@@ -236,10 +263,16 @@ app.whenReady().then(async () => {
           
           req.on('close', () => controller.abort());
 
+          const proxyHeaders = { ...req.headers };
+          delete proxyHeaders['host'];
+          delete proxyHeaders['origin'];
+          delete proxyHeaders['referer'];
+          
           axios({
             method: req.method,
             url: parsedUrl.toString(),
             headers: {
+              ...proxyHeaders,
               'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
               'Accept': '*/*'
             },

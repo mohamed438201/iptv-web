@@ -1,0 +1,85 @@
+.custom-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.custom-dialog-box {
+  background: #181818;
+  border: 1px solid #333;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-dialog-content {
+  padding: 32px 24px;
+  font-size: 18px;
+  font-weight: 500;
+  color: #fff;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.custom-dialog-content p {
+  margin: 0;
+}
+
+.custom-dialog-actions {
+  display: flex;
+  border-top: 1px solid #333;
+}
+
+.custom-dialog-actions button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+  outline: none;
+}
+
+.btn-dialog-cancel {
+  color: #a3a3a3;
+  border-right: 1px solid #333 !important;
+}
+
+.btn-dialog-cancel:hover {
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+}
+
+.btn-dialog-confirm {
+  color: #E50914;
+}
+
+.btn-dialog-confirm:hover {
+  background: rgba(229, 9, 20, 0.1);
+}
+
+.fade-in-scale {
+  animation: fadeInScale 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
