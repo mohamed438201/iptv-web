@@ -65,7 +65,7 @@ export default function App() {
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
   
   // Only the specified server
-  const SERVER = { host: 'http://b1718o.top:80', user: '2366901490', pass: '7312171749', proxy: '/b17' };
+  const SERVER = { host: 'http://viva.vivatvs.uk:8080', user: '2x84ui3cng', pass: 'zu6qx62ech', proxy: '/viva' };
 
   const fetchedPlanRef = React.useRef(null);
 

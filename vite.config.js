@@ -10,10 +10,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/live/, '')
       },
-      '/b17': {
-        target: 'http://b1718o.top:80',
+      '/viva': {
+        target: 'http://viva.vivatvs.uk:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/b17/, '')
+        rewrite: (path) => path.replace(/^\/viva/, '')
       },
       '/saidi': {
         target: 'http://ea.saidisat.com:80',
