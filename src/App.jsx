@@ -23,7 +23,7 @@ import { buildXtreamApiUrl, buildXtreamStreamUrl, buildXtreamHostApiUrl } from '
 export default function App() {
   const { user, activeProfile, logout, refreshUser } = useAuth();
   const [authView, setAuthView] = useState('login');
-  
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -63,15 +63,15 @@ export default function App() {
   const [offlineToast, setOfflineToast] = useState(false);
 
   const isNativeApp = window.Capacitor !== undefined || (navigator.userAgent && navigator.userAgent.toLowerCase().includes('electron'));
-  
+
   // Only the specified server
-  const SERVER = { host: 'http://viva.vivatvs.uk:8080', user: '2x84ui3cng', pass: 'zu6qx62ech', proxy: '/viva' };
+  const SERVER = { host: 'http://b1718o.top:80', user: '2366901490', pass: '7312171749', proxy: '/b17' };
 
   const fetchedPlanRef = React.useRef(null);
 
   useEffect(() => {
     setupOTAUpdaters();
-    
+
     const handleOffline = () => setIsOfflineMode(true);
     const handleOnline = () => {
       setIsOfflineMode(false);
@@ -80,10 +80,10 @@ export default function App() {
         fetchAllData(user.planId);
       }
     };
-    
+
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
-    
+
     if (!navigator.onLine && isNativeApp) {
       setOfflineToast(true);
       setIsDataLoading(false);
@@ -92,7 +92,7 @@ export default function App() {
       navigate('/downloads');
       setTimeout(() => setOfflineToast(false), 5000);
     }
-    
+
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
@@ -110,18 +110,18 @@ export default function App() {
 
   useEffect(() => {
     if (isDataLoading) return; // Wait for data to be loaded before syncing
-    
+
     const path = location.pathname;
-    
+
     if (path.startsWith('/detail/')) {
       const parts = path.split('/');
       const type = parts[2];
       const id = parts[3];
-      
+
       let item = null;
       if (type === 'vod') item = vodStreams.find(s => String(s.stream_id) === String(id));
       if (type === 'series') item = seriesStreams.find(s => String(s.series_id) === String(id));
-      
+
       if (item) {
         const enhancedItem = {
           ...item,
@@ -139,11 +139,11 @@ export default function App() {
       const parts = path.split('/');
       const type = parts[2];
       const id = parts[3];
-      
+
       if (location.state?.offlineItem) {
-         setPlayingItem(location.state.offlineItem);
-         setCurrentView('player');
-         return;
+        setPlayingItem(location.state.offlineItem);
+        setCurrentView('player');
+        return;
       }
 
       let item = null;
@@ -156,32 +156,32 @@ export default function App() {
         const episodeNum = parts[5];
         // Fetch series info asynchronously if needed
         fetchData('get_series_info', { series_id: id }).then(seriesData => {
-           const eps = seriesData?.episodes ? Object.values(seriesData.episodes).flat() : [];
-           const ep = eps.find(e => String(e.season) === String(season) && String(e.episode_num) === String(episodeNum));
-           if (ep) {
-              const playUrl = generatePlayUrl(ep.id, 'series', ep.container_extension || 'mp4');
-              const enhancedEp = {
-                ...ep,
-                url: playUrl,
-                type: 'series',
-                name: ep.title,
-                logo: ep.info?.movie_image || ep.info?.cover || '',
-                progress: location.state?.progress
-              };
-              setPlayingEpisodes(eps);
-              setPlayingSeriesInfo({
-                 ...(seriesData?.info || {}),
-                 series_id: id
-              });
-              setPlayingItem(enhancedEp);
-              setCurrentView('player');
-           }
+          const eps = seriesData?.episodes ? Object.values(seriesData.episodes).flat() : [];
+          const ep = eps.find(e => String(e.season) === String(season) && String(e.episode_num) === String(episodeNum));
+          if (ep) {
+            const playUrl = generatePlayUrl(ep.id, 'series', ep.container_extension || 'mp4');
+            const enhancedEp = {
+              ...ep,
+              url: playUrl,
+              type: 'series',
+              name: ep.title,
+              logo: ep.info?.movie_image || ep.info?.cover || '',
+              progress: location.state?.progress
+            };
+            setPlayingEpisodes(eps);
+            setPlayingSeriesInfo({
+              ...(seriesData?.info || {}),
+              series_id: id
+            });
+            setPlayingItem(enhancedEp);
+            setCurrentView('player');
+          }
         }).catch(() => {
-           navigate('/home');
+          navigate('/home');
         });
         return; // async handles it
       }
-      
+
       if (item && type !== 'series') {
         const enhancedItem = {
           ...item,
@@ -205,10 +205,10 @@ export default function App() {
     } else {
       setCurrentView('home');
       if (path.startsWith('/home/')) {
-         const tab = path.split('/')[2];
-         if (['home', 'live', 'vod', 'series'].includes(tab)) {
-            setCurrentTab(tab);
-         }
+        const tab = path.split('/')[2];
+        if (['home', 'live', 'vod', 'series'].includes(tab)) {
+          setCurrentTab(tab);
+        }
       }
     }
   }, [location.pathname, isDataLoading, liveStreams, vodStreams, seriesStreams]);
@@ -232,15 +232,15 @@ export default function App() {
       try {
         const { CapacitorUpdater } = await import('@capgo/capacitor-updater');
         await CapacitorUpdater.notifyAppReady();
-        
+
         const res = await fetch('https://api.github.com/repos/mohamed438201/iptv-web/releases/latest');
         const release = await res.json();
         const zipAsset = release.assets?.find(a => a.name === 'dist.zip');
-        
+
         if (zipAsset) {
           const latestVersion = release.tag_name;
           const currentVersion = await CapacitorUpdater.current();
-          
+
           if (currentVersion.version !== latestVersion) {
             const failKey = `ota_fails_${latestVersion}`;
             const failedAttempts = parseInt(localStorage.getItem(failKey) || '0');
@@ -297,7 +297,7 @@ export default function App() {
       if (!res.ok) throw new Error(`Server Error: ${res.status} ${res.error || ''}`);
       return res.data;
     }
-    
+
     const response = await fetch(finalUrl);
     if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
     return await response.json();
@@ -365,7 +365,7 @@ export default function App() {
   const handleSelect = async (item, type) => {
     if (!item) return;
     setIsSearchOpen(false); // Close search overlay if open
-    
+
     // Check if it's an offline item
     if (item.isOffline) {
       setPlayingItem(item);
@@ -389,7 +389,7 @@ export default function App() {
 
     let isMovieOrSeries = type === 'vod' || type === 'series';
     const id = item.stream_id || item.series_id || item.id;
-    
+
     if (isMovieOrSeries) {
       navigate(`/detail/${type}/${id}`);
     } else {
@@ -401,13 +401,13 @@ export default function App() {
     if (!item) return;
     setPlayingEpisodes(episodes);
     setPlayingSeriesInfo(seriesInfo);
-    
+
     // For series, play the specific episode selected
     if (item.type === 'series') {
       navigate(`/play/series/${item.series_id || seriesInfo?.series_id || item.id}/${item.season}/${item.episode_num}`);
       return;
     }
-    
+
     const id = item.stream_id || item.id;
     navigate(`/play/${item.type || 'vod'}/${id}`);
   };
@@ -450,7 +450,7 @@ export default function App() {
           </div>
           <h1 style={{ color: '#fff', fontSize: '28px', marginBottom: '16px', fontWeight: '800' }}>Account Suspended</h1>
           <p style={{ color: '#a0a0b0', lineHeight: '1.6', fontSize: '16px', margin: '0' }}>
-            Your account has been <strong style={{ color: '#ef4444' }}>banned</strong> for violating our terms of service. 
+            Your account has been <strong style={{ color: '#ef4444' }}>banned</strong> for violating our terms of service.
             If you believe this is a mistake, please contact support.
           </p>
           <div style={{ marginTop: '32px' }}>
@@ -487,7 +487,7 @@ export default function App() {
           </div>
           <h1 style={{ color: '#fff', fontSize: '28px', marginBottom: '16px', fontWeight: '800' }}>Pending Approval</h1>
           <p style={{ color: '#a0a0b0', lineHeight: '1.6', fontSize: '16px', margin: '0' }}>
-            We have received your payment receipt. Your subscription is currently <strong style={{ color: '#E50914' }}>pending approval</strong> by the administrator. 
+            We have received your payment receipt. Your subscription is currently <strong style={{ color: '#E50914' }}>pending approval</strong> by the administrator.
             Please wait while we verify your transfer.
           </p>
           <div style={{ marginTop: '32px' }}>
@@ -542,100 +542,100 @@ export default function App() {
           </div>
         </div>
       )}
-      
+
       <div className="app-container" style={{ display: (!isOfflineMode && (isDataLoading || !isHeroReady)) ? 'none' : 'flex' }}>
         {currentView !== 'player' && (
-        <Navbar 
-          currentView={currentView}
-          setCurrentView={setCurrentView}
-          currentTab={currentTab}
-          setCurrentTab={(tab) => {
-            if (tab === 'home' && !isOfflineMode) refreshUser();
-            navigate(`/home/${tab}`);
-          }}
-          onSearchClick={() => setIsSearchOpen(true)}
-          onProfileClick={() => navigate('/account')}
-          onMyListClick={() => navigate('/mylist')}
-          onCollectionsClick={() => navigate('/collections')}
-          onDownloadsClick={() => navigate('/downloads')}
-          isOfflineMode={isOfflineMode}
-        />
-      )}
-
-      {isSearchOpen && !isOfflineMode && (
-        <AdvancedSearch 
-          liveStreams={liveStreams}
-          vodStreams={vodStreams}
-          seriesStreams={seriesStreams}
-          onClose={() => setIsSearchOpen(false)}
-          onItemSelect={handleSelect}
-        />
-      )}
-
-      <main className="app-main-content">
-        <AutoUpdater />
-        
-        {currentView === 'home' && !isOfflineMode && (
-          <Home 
+          <Navbar
+            currentView={currentView}
+            setCurrentView={setCurrentView}
             currentTab={currentTab}
-            setCurrentTab={setCurrentTab}
-            categories={currentTab === 'live' ? liveCategories : (currentTab === 'vod' ? vodCategories : seriesCategories)}
-            streams={currentTab === 'live' ? liveStreams : (currentTab === 'vod' ? vodStreams : seriesStreams)}
-            liveCategories={liveCategories}
-            liveStreams={liveStreams}
-            vodCategories={vodCategories}
-            vodStreams={vodStreams}
-            seriesCategories={seriesCategories}
-            seriesStreams={seriesStreams}
-            currentCategoryId={currentCategoryId}
-            onSelectCategory={setCurrentCategoryId}
-            onItemSelect={(item, type) => handleSelect(item, type || currentTab)}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            onHeroReady={() => setIsHeroReady(true)}
-          />
-        )}
-        
-        {currentView === 'detail' && selectedItem && (
-          <ChannelDetail 
-            item={selectedItem}
-            server={SERVER}
-            onBack={() => navigate('/home')}
-            onPlay={handlePlay}
-          />
-        )}
-        
-        {currentView === 'player' && playingItem && (
-          <Player 
-            channel={playingItem} 
-            episodes={playingEpisodes}
-            seriesInfo={playingSeriesInfo}
-            onPlayEpisode={handlePlayEpisode}
-            onBack={() => {
-              refreshUser();
-              navigate(-1);
-            }} 
+            setCurrentTab={(tab) => {
+              if (tab === 'home' && !isOfflineMode) refreshUser();
+              navigate(`/home/${tab}`);
+            }}
+            onSearchClick={() => setIsSearchOpen(true)}
+            onProfileClick={() => navigate('/account')}
+            onMyListClick={() => navigate('/mylist')}
+            onCollectionsClick={() => navigate('/collections')}
+            onDownloadsClick={() => navigate('/downloads')}
+            isOfflineMode={isOfflineMode}
           />
         )}
 
-        {currentView === 'account' && (
-          <Account onBack={() => navigate('/home')} />
+        {isSearchOpen && !isOfflineMode && (
+          <AdvancedSearch
+            liveStreams={liveStreams}
+            vodStreams={vodStreams}
+            seriesStreams={seriesStreams}
+            onClose={() => setIsSearchOpen(false)}
+            onItemSelect={handleSelect}
+          />
         )}
-        
-        {currentView === 'mylist' && (
-          <MyList onItemSelect={(item, type) => handleSelect(item, type)} />
-        )}
-        
-        {currentView === 'collections' && (
-          <Collections onItemSelect={(item, type) => handleSelect(item, type)} />
-        )}
-        
-        {currentView === 'downloads' && (
-          <Downloads onItemSelect={(item, type) => handleSelect(item, type)} />
-        )}
-      </main>
-      <WindowControls />
-    </div>
+
+        <main className="app-main-content">
+          <AutoUpdater />
+
+          {currentView === 'home' && !isOfflineMode && (
+            <Home
+              currentTab={currentTab}
+              setCurrentTab={setCurrentTab}
+              categories={currentTab === 'live' ? liveCategories : (currentTab === 'vod' ? vodCategories : seriesCategories)}
+              streams={currentTab === 'live' ? liveStreams : (currentTab === 'vod' ? vodStreams : seriesStreams)}
+              liveCategories={liveCategories}
+              liveStreams={liveStreams}
+              vodCategories={vodCategories}
+              vodStreams={vodStreams}
+              seriesCategories={seriesCategories}
+              seriesStreams={seriesStreams}
+              currentCategoryId={currentCategoryId}
+              onSelectCategory={setCurrentCategoryId}
+              onItemSelect={(item, type) => handleSelect(item, type || currentTab)}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              onHeroReady={() => setIsHeroReady(true)}
+            />
+          )}
+
+          {currentView === 'detail' && selectedItem && (
+            <ChannelDetail
+              item={selectedItem}
+              server={SERVER}
+              onBack={() => navigate('/home')}
+              onPlay={handlePlay}
+            />
+          )}
+
+          {currentView === 'player' && playingItem && (
+            <Player
+              channel={playingItem}
+              episodes={playingEpisodes}
+              seriesInfo={playingSeriesInfo}
+              onPlayEpisode={handlePlayEpisode}
+              onBack={() => {
+                refreshUser();
+                navigate(-1);
+              }}
+            />
+          )}
+
+          {currentView === 'account' && (
+            <Account onBack={() => navigate('/home')} />
+          )}
+
+          {currentView === 'mylist' && (
+            <MyList onItemSelect={(item, type) => handleSelect(item, type)} />
+          )}
+
+          {currentView === 'collections' && (
+            <Collections onItemSelect={(item, type) => handleSelect(item, type)} />
+          )}
+
+          {currentView === 'downloads' && (
+            <Downloads onItemSelect={(item, type) => handleSelect(item, type)} />
+          )}
+        </main>
+        <WindowControls />
+      </div>
     </>
   );
 }
